@@ -1,0 +1,42 @@
+
+> frontend@0.1.0 dev
+> next dev
+
+   ▲ Next.js 16.0.7 (Turbopack)
+   - Local:         http://localhost:3001
+   - Network:       http://192.168.56.1:3001
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 930ms
+ ○ Compiling /admin/transfers ...
+ GET /admin/transfers 200 in 5.8s (compile: 5.5s, render: 330ms)
+ GET /admin/transfers 200 in 51ms (compile: 9ms, render: 43ms)
+ GET /admin/transfers 200 in 60ms (compile: 10ms, render: 50ms)
+   Reload env: .env.local
+ ✓ Compiled in 91ms
+ GET /admin/transfers 200 in 174ms (compile: 13ms, render: 161ms)
+ GET /admin/transfers 200 in 353ms (compile: 83ms, render: 270ms)
+ GET /admin/transfers 200 in 59ms (compile: 8ms, render: 51ms)
+ GET /admin/transfers 200 in 53ms (compile: 8ms, render: 45ms)
+ GET /admin/transfers 404 in 708ms (compile: 622ms, render: 86ms)
+   Reload env: .env.local
+ ✓ Compiled in 34ms
+ GET /admin/transfers 200 in 414ms (compile: 103ms, render: 311ms)
+ GET /admin/transfers 200 in 273ms (compile: 11ms, render: 262ms)
+   Reload env: .env.local
+ ✓ Compiled in 842ms
+ GET /admin/transfers 200 in 2.2s (compile: 838ms, render: 1327ms)
+ GET /admin/transfers 200 in 971ms (compile: 61ms, render: 911ms)
+   Reload env: .env.local
+ ✓ Compiled in 194ms
+ GET /admin/transfers 200 in 334ms (compile: 263ms, render: 71ms)
+ GET /admin/transfers 200 in 526ms (compile: 13ms, render: 513ms)
+ GET /admin/transfers 200 in 53ms (compile: 10ms, render: 43ms)
+ ○ Compiling / ...
+ GET /login 200 in 6.6s (compile: 6.6s, render: 30ms)
+ GET / 200 in 6.9s (compile: 6.9s, render: 39ms)
+ GET /site.webmanifest 404 in 69ms (compile: 11ms, render: 58ms)
+ GET /admin 200 in 2.7s (compile: 2.4s, render: 225ms)
+ GET /admin/transfers 200 in 30ms (compile: 10ms, render: 21ms)
+ GET /site.webmanifest 404 in 85ms (compile: 13ms, render: 72ms)
