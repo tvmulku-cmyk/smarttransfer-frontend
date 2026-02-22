@@ -62,7 +62,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
                     return;
                 }
 
-                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/transfer/bookings/${id}`, {
+                const response = await fetch(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/transfer/bookings/${id}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
@@ -105,7 +105,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
                     subStatus: status === 'CONFIRMED' ? 'PARTNER_ACCEPTED' : 'PARTNER_REJECTED'
                 };
 
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/transfer/bookings/${booking.id}/status`, {
+            const response = await fetch(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/transfer/bookings/${booking.id}/status`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

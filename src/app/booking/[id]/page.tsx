@@ -72,7 +72,7 @@ const BookingPage: React.FC = () => {
         notes: values.notes || null,
       };
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/bookings`, {
+      const response = await fetch(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

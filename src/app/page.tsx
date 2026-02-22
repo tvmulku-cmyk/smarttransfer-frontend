@@ -144,9 +144,9 @@ const HomePage: React.FC = () => {
     const fetchConfig = async () => {
       try {
         const [modulesRes, imagesRes, infoRes] = await Promise.all([
-          axios.get(`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/tenant/modules`),
-          axios.get(`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/tenant/hero-images`),
-          axios.get(`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/tenant/info`)
+          axios.get(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/tenant/modules`),
+          axios.get(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/tenant/hero-images`),
+          axios.get(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/tenant/info`)
         ]);
 
         if (modulesRes.data.success) {
@@ -339,7 +339,7 @@ const HomePage: React.FC = () => {
           babySeat: babySeatRequired,
         };
 
-        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/bookings`, payload);
+        const res = await axios.post(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/bookings`, payload);
 
         if (res.data?.success) {
           message.success('Rezervasyon başarıyla oluşturuldu!');

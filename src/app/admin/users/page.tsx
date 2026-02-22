@@ -70,7 +70,7 @@ const AdminUsersPage: React.FC = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/users`);
+      const res = await axios.get(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/users`);
 
       console.log('USERS RAW RESPONSE >>>', res.data);
 
@@ -138,7 +138,7 @@ const AdminUsersPage: React.FC = () => {
   // Aktif / pasif
   const handleToggleActive = async (user: User, active: boolean) => {
     try {
-      const res = await axios.patch(`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/users/${user.id}/active`, {
+      const res = await axios.patch(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/users/${user.id}/active`, {
         isActive: active,
       });
 
@@ -172,10 +172,10 @@ const AdminUsersPage: React.FC = () => {
       }
 
       if (editingUser) {
-        await axios.put(`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/users/${editingUser.id}`, payload);
+        await axios.put(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/users/${editingUser.id}`, payload);
         message.success('Kullanıcı güncellendi');
       } else {
-        await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/users`, payload);
+        await axios.post(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/users`, payload);
         message.success('Kullanıcı eklendi');
       }
 
