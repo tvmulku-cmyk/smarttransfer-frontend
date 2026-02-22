@@ -415,7 +415,7 @@ const ExtraServicesPage: React.FC = () => {
                                 listType="picture-card"
                                 className="avatar-uploader"
                                 showUploadList={false}
-                                action={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/upload`}
+                                action={`${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/upload`}
                                 headers={{
                                     Authorization: typeof window !== 'undefined' ? `Bearer ${localStorage.getItem('token')}` : '',
                                 }}

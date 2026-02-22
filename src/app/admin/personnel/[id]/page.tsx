@@ -113,7 +113,7 @@ const PersonnelEditPage = ({ params }: { params: Promise<{ id: string }> }) => {
 
     const uploadProps = {
         name: 'file',
-        action: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/upload/driver-docs`,
+        action: `${process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app'}/api/upload/driver-docs`,
         headers: {
             authorization: 'authorization-text',
         },
