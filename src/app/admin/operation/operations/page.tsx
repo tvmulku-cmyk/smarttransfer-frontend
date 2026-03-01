@@ -1100,6 +1100,7 @@ export default function OperationsPage() {
                                 strategy={horizontalListSortingStrategy}
                             >
                                 <Table
+                                    rowKey="id"
                                     bordered
                                     columns={(columns as any[]).filter(Boolean).map((col, index) => ({
                                         ...col,
