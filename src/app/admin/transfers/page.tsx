@@ -139,6 +139,14 @@ const TransfersPage: React.FC = () => {
             sorter: (a: Booking, b: Booking) => dayjs(a.pickupDateTime).unix() - dayjs(b.pickupDateTime).unix(),
         },
         {
+            title: 'Acente',
+            key: 'agency',
+            render: (_: any, record: Booking) => {
+                const name = record.metadata?.agencyName || record.metadata?.partnerName || 'Direkt';
+                return <Text strong>{name}</Text>;
+            },
+        },
+        {
             title: 'Yolcu',
             dataIndex: 'passengerName',
             key: 'passengerName',
@@ -340,6 +348,11 @@ const TransfersPage: React.FC = () => {
                             </Descriptions>
 
                             <Descriptions title="Transfer Detayları" bordered column={1}>
+                                {selectedBooking.metadata?.agencyName && (
+                                    <Descriptions.Item label="Acente">
+                                        <Text strong>{selectedBooking.metadata.agencyName}</Text>
+                                    </Descriptions.Item>
+                                )}
                                 <Descriptions.Item label="Alış Noktası">
                                     <EnvironmentItem text={selectedBooking.pickup} color="green" />
                                 </Descriptions.Item>

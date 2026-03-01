@@ -288,7 +288,7 @@ export default function OperationsPage() {
             key: 'partnerName',
             width: 150,
             render: (_: any, record: any) => {
-                const name = record.agencyName || record.partnerName || record.agency?.name;
+                const name = record.agencyName || record.agency?.name || record.partnerName;
                 return <Text strong>{name || 'Direkt'}</Text>;
             }
         },
