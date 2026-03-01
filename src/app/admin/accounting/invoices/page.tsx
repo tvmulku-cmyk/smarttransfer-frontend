@@ -338,6 +338,7 @@ export default function InvoicesPage() {
         const partyField = isSalesLocal ? 'buyerInfo' : 'sellerInfo';
         form.setFieldsValue({
             [partyField]: {
+                accountId: acc.id,
                 companyName: acc.name,
                 taxNo: acc.taxNumber || '',
                 taxOffice: acc.taxOffice || '',
@@ -851,6 +852,7 @@ export default function InvoicesPage() {
                             {/* Fields — alway write to the correct side (buyerInfo for SALES, sellerInfo for PURCHASE) */}
                             {isSales ? (
                                 <>
+                                    <Form.Item name={['buyerInfo', 'accountId']} hidden><Input /></Form.Item>
                                     <Form.Item name={['buyerInfo', 'companyName']} label="Firma / Kişi Adı" rules={[{ required: true, message: 'Firma adı zorunlu' }]} style={{ marginBottom: 10 }}>
                                         <Input placeholder="Müşteri firma adı..." />
                                     </Form.Item>
@@ -866,6 +868,7 @@ export default function InvoicesPage() {
                                 </>
                             ) : (
                                 <>
+                                    <Form.Item name={['sellerInfo', 'accountId']} hidden><Input /></Form.Item>
                                     <Form.Item name={['sellerInfo', 'companyName']} label="Firma Adı" rules={[{ required: true, message: 'Firma adı zorunlu' }]} style={{ marginBottom: 10 }}>
                                         <Input placeholder="Satıcı firma adı..." />
                                     </Form.Item>
