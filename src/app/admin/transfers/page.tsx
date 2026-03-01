@@ -141,8 +141,8 @@ const TransfersPage: React.FC = () => {
         {
             title: 'Acente',
             key: 'agency',
-            render: (_: any, record: Booking) => {
-                const name = record.metadata?.agencyName || record.metadata?.partnerName || 'Direkt';
+            render: (_: any, record: any) => {
+                const name = record.agencyName || record.agency?.name || record.partnerName || record.metadata?.agencyName || record.metadata?.partnerName || 'Direkt';
                 return <Text strong>{name}</Text>;
             },
         },
@@ -348,11 +348,11 @@ const TransfersPage: React.FC = () => {
                             </Descriptions>
 
                             <Descriptions title="Transfer Detayları" bordered column={1}>
-                                {selectedBooking.metadata?.agencyName && (
+                                {(selectedBooking as any).agencyName || selectedBooking.metadata?.agencyName ? (
                                     <Descriptions.Item label="Acente">
-                                        <Text strong>{selectedBooking.metadata.agencyName}</Text>
+                                        <Text strong>{(selectedBooking as any).agencyName || selectedBooking.metadata?.agencyName}</Text>
                                     </Descriptions.Item>
-                                )}
+                                ) : null}
                                 <Descriptions.Item label="Alış Noktası">
                                     <EnvironmentItem text={selectedBooking.pickup} color="green" />
                                 </Descriptions.Item>
