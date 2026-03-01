@@ -54,6 +54,7 @@ interface Booking {
     notes?: string;
     flightNumber?: string;
     operationalStatus?: string; // Added
+    metadata?: any;
 }
 
 const EnvironmentItem = ({ text, color }: { text: string, color: string }) => (
@@ -155,20 +156,22 @@ const TransfersPage: React.FC = () => {
                 <div style={{ maxWidth: 250 }}>
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
                         <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#52c41a', marginRight: 8 }} />
-                        <Text ellipsis>{record.pickup}</Text>
+                        <Text ellipsis>{record.metadata?.pickup || 'Belirtilmedi'}</Text>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
                         <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#f5222d', marginRight: 8 }} />
-                        <Text ellipsis>{record.dropoff}</Text>
+                        <Text ellipsis>{record.metadata?.dropoff || 'Belirtilmedi'}</Text>
                     </div>
                 </div>
             ),
         },
         {
             title: 'Araç',
-            dataIndex: 'vehicleType',
             key: 'vehicleType',
-            render: (text: string) => <Tag icon={<CarOutlined />}>{text}</Tag>,
+            render: (_: any, record: Booking) => {
+                const type = record.metadata?.vehicleType || 'Bilinmiyor';
+                return <Tag icon={<CarOutlined />}>{type}</Tag>;
+            }
         },
         {
             title: 'Tutar',

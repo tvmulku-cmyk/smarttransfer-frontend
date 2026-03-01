@@ -20,6 +20,23 @@ const TopBar: React.FC = () => {
     router.push('/');
   };
 
+  // Kullanıcı giriş yapmışsa panele gönder
+  const getPanelRoute = () => {
+    if (!user) return null;
+    const type = (user.role?.type || '').toUpperCase();
+    const code = (user.role?.code || '').toUpperCase();
+    const combined = type + ' ' + code;
+
+    if (combined.includes('AGENCY')) return '/agency';
+    if (combined.includes('PARTNER')) return '/partner';
+    if (combined.includes('DRIVER')) return '/driver';
+
+    // Admin, SUPER_ADMIN, TENANT_ADMIN, PLATFORM_OPS, Staff vs. → hepsini /admin'e gönder
+    return '/admin';
+  };
+
+  const panelRoute = getPanelRoute();
+
   return (
     <div
       style={{
@@ -28,7 +45,7 @@ const TopBar: React.FC = () => {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        background: '#0f172a', // koyu lacivert
+        background: '#0f172a',
         color: 'white',
       }}
     >
@@ -39,33 +56,22 @@ const TopBar: React.FC = () => {
         SmartTransfer
       </div>
 
-      {/* loading durumunda hiçbir şey göstermeyelim */}
       {!loading && (
         <Space align="center">
           {user ? (
             <>
-              <Text style={{ color: 'white' }}>
-                Hoş geldin, <b>{user.fullName || user.email}</b>
-              </Text>
-              {(user.role?.code === 'ADMIN' || user.role?.type === 'ADMIN') && (
-                <Button
-                  size="small"
-                  style={{ marginLeft: 8 }}
-                  onClick={() => router.push('/admin')}
-                >
-                  Admin Panel
-                </Button>
-              )}
-              {/* Partner Panel Button */}
-              {(user.role?.code === 'PARTNER' || user.role?.type === 'PARTNER') && (
-                <Button
-                  size="small"
-                  style={{ marginLeft: 8 }}
-                  onClick={() => router.push('/partner')}
-                >
-                  Panel
-                </Button>
-              )}
+              {/* İsme tıklayınca panel sayfasına git */}
+              <span
+                onClick={() => panelRoute && router.push(panelRoute)}
+                style={{
+                  color: 'white',
+                  cursor: panelRoute ? 'pointer' : 'default',
+                  userSelect: 'none',
+                }}
+              >
+                Hoş geldin,{' '}
+                <b>{user.fullName || user.email}</b>
+              </span>
               <Button
                 size="small"
                 danger

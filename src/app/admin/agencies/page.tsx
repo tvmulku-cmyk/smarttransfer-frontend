@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Table, Card, Button, Modal, Form, Input, Typography, message, Space, Tag, InputNumber, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Table, Card, Button, Modal, Form, Input, Typography, message, Space, Tag, InputNumber, Popconfirm, Divider, Descriptions } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, BankOutlined } from '@ant-design/icons';
 import apiClient from '@/lib/api-client';
 import AdminLayout from '../AdminLayout';
 import AdminGuard from '../AdminGuard';
@@ -19,6 +19,14 @@ interface Agency {
     commissionRate: number;
     status: string;
     createdAt: string;
+    // Company info (filled by agency themselves)
+    companyName?: string;
+    address?: string;
+    taxOffice?: string;
+    taxNumber?: string;
+    contactPhone?: string;
+    contactEmail?: string;
+    website?: string;
     _count?: {
         users: number;
         bookings: number;
@@ -196,6 +204,7 @@ const AdminAgenciesPage = () => {
                     onOk={() => form.submit()}
                     okText="Kaydet"
                     cancelText="İptal"
+                    width={640}
                 >
                     <Form form={form} layout="vertical" onFinish={handleSave}>
                         <Form.Item name="name" label="Firma / Acente Adı" rules={[{ required: true, message: 'Firma adı zorunludur' }]}>
@@ -221,6 +230,39 @@ const AdminAgenciesPage = () => {
                         <Form.Item name="status" label="Durumu">
                             <Input placeholder="ACTIVE, INACTIVE, SUSPENDED" />
                         </Form.Item>
+
+                        {editingAgency && (
+                            (editingAgency.companyName || editingAgency.taxOffice || editingAgency.taxNumber || editingAgency.address || editingAgency.contactEmail || editingAgency.contactPhone || editingAgency.website) && (
+                                <>
+                                    <Divider>
+                                        <Space><BankOutlined /> Acente Tarafından Girilen Firma Bilgileri</Space>
+                                    </Divider>
+                                    <Descriptions column={2} size="small" bordered>
+                                        {editingAgency.companyName && (
+                                            <Descriptions.Item label="Firma Adı" span={2}>{editingAgency.companyName}</Descriptions.Item>
+                                        )}
+                                        {editingAgency.taxOffice && (
+                                            <Descriptions.Item label="Vergi Dairesi">{editingAgency.taxOffice}</Descriptions.Item>
+                                        )}
+                                        {editingAgency.taxNumber && (
+                                            <Descriptions.Item label="Vergi No">{editingAgency.taxNumber}</Descriptions.Item>
+                                        )}
+                                        {editingAgency.contactPhone && (
+                                            <Descriptions.Item label="Telefon">{editingAgency.contactPhone}</Descriptions.Item>
+                                        )}
+                                        {editingAgency.contactEmail && (
+                                            <Descriptions.Item label="E-Posta">{editingAgency.contactEmail}</Descriptions.Item>
+                                        )}
+                                        {editingAgency.website && (
+                                            <Descriptions.Item label="Web Sitesi" span={2}>{editingAgency.website}</Descriptions.Item>
+                                        )}
+                                        {editingAgency.address && (
+                                            <Descriptions.Item label="Adres" span={2}>{editingAgency.address}</Descriptions.Item>
+                                        )}
+                                    </Descriptions>
+                                </>
+                            )
+                        )}
                     </Form>
                 </Modal>
             </AdminLayout>

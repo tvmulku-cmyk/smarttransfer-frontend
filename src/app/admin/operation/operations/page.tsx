@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -24,7 +24,11 @@ import {
     DragOutlined,
     EditOutlined,
     BgColorsOutlined,
-    MessageOutlined
+    MessageOutlined,
+    FullscreenOutlined,
+    FullscreenExitOutlined,
+    EyeOutlined,
+    EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import 'dayjs/locale/tr';
@@ -155,7 +159,39 @@ export default function OperationsPage() {
     const [loading, setLoading] = useState(true);
     const [vehicles, setVehicles] = useState<any[]>([]);
     const [drivers, setDrivers] = useState<any[]>([]);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
+        try {
+            const saved = localStorage.getItem('operationsHiddenColumns');
+            return saved ? new Set(JSON.parse(saved)) : new Set();
+        } catch { return new Set(); }
+    });
     const { socket } = useSocket();
+
+    // Fullscreen toggle
+    const toggleFullscreen = () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => { });
+        } else {
+            document.exitFullscreen().catch(() => { });
+        }
+    };
+
+    // Listen for fullscreen changes (ESC key auto-exits)
+    React.useEffect(() => {
+        const handler = () => setIsFullscreen(!!document.fullscreenElement);
+        document.addEventListener('fullscreenchange', handler);
+        return () => document.removeEventListener('fullscreenchange', handler);
+    }, []);
+
+    const toggleColumnVisibility = (key: string) => {
+        setHiddenColumns(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key); else next.add(key);
+            localStorage.setItem('operationsHiddenColumns', JSON.stringify([...next]));
+            return next;
+        });
+    };
 
     // Transfer durumu renk ayarları
     const STATUS_LABELS: Record<string, string> = {
@@ -249,10 +285,12 @@ export default function OperationsPage() {
         },
         {
             title: 'ACENTE',
-            dataIndex: 'partnerName',
             key: 'partnerName',
             width: 150,
-            render: (text: string) => <Text strong>{text || 'Direkt'}</Text>
+            render: (_: any, record: any) => {
+                const name = record.agencyName || record.partnerName || record.agency?.name;
+                return <Text strong>{name || 'Direkt'}</Text>;
+            }
         },
         {
             title: 'ACENTE NOT',
@@ -268,10 +306,12 @@ export default function OperationsPage() {
         },
         {
             title: 'AD SOYAD',
-            dataIndex: ['customer', 'name'],
             key: 'customerName',
             width: 180,
-            render: (text: string) => <Text style={{ textTransform: 'uppercase' }}>{text}</Text>
+            render: (_: any, record: any) => {
+                const name = record.contactName || record.customer?.name || record.passengerName || '';
+                return <Text style={{ textTransform: 'uppercase' }}>{name || <Text type="secondary">—</Text>}</Text>;
+            }
         },
         {
             title: 'TARİH',
@@ -428,16 +468,31 @@ export default function OperationsPage() {
             render: (text: string) => <Tag>{text}</Tag>
         },
         {
-            title: 'ROTA',
-            key: 'route',
-            width: 250,
-            render: (_: any, record: any) => (
-                <Space direction="vertical" size={0} style={{ fontSize: '12px' }}>
-                    <Text ellipsis style={{ maxWidth: 230 }}><EnvironmentOutlined style={{ color: 'green' }} /> {record.pickup.rawLocation || record.pickup.location}</Text>
-                    <Text ellipsis style={{ maxWidth: 230 }}><EnvironmentOutlined style={{ color: 'red' }} /> {record.dropoff.rawLocation || record.dropoff.location}</Text>
-                </Space>
-            )
-        }
+            title: 'ALIŞ YERİ',
+            key: 'pickup',
+            width: 220,
+            render: (_: any, record: any) => {
+                const loc = record.pickup?.rawLocation || record.pickup?.location || record.pickupLocation || '—';
+                return (
+                    <Text ellipsis={{ tooltip: loc }} style={{ fontSize: 12, maxWidth: 200 }}>
+                        <EnvironmentOutlined style={{ color: '#16a34a', marginRight: 4 }} />{loc}
+                    </Text>
+                );
+            }
+        },
+        {
+            title: 'BIRAKIŞ YERİ',
+            key: 'dropoff',
+            width: 220,
+            render: (_: any, record: any) => {
+                const loc = record.dropoff?.rawLocation || record.dropoff?.location || record.dropoffLocation || '—';
+                return (
+                    <Text ellipsis={{ tooltip: loc }} style={{ fontSize: 12, maxWidth: 200 }}>
+                        <EnvironmentOutlined style={{ color: '#dc2626', marginRight: 4 }} />{loc}
+                    </Text>
+                );
+            }
+        },
     ];
 
     // Column config stores only METADATA (key, width, title, order) - NOT render functions
@@ -451,17 +506,19 @@ export default function OperationsPage() {
 
     // Merge column config with fresh render functions from defaultColumns
     const columns = React.useMemo(() => {
-        return columnConfig.map(cfg => {
-            const def = defaultColumns.find(d => d.key === cfg.key);
-            if (!def) return null;
-            return {
-                ...def,
-                width: cfg.width ?? def.width,
-                title: cfg.title ?? def.title,
-            };
-        }).filter(Boolean);
+        return columnConfig
+            .filter(cfg => !hiddenColumns.has(cfg.key))
+            .map(cfg => {
+                const def = defaultColumns.find(d => d.key === cfg.key);
+                if (!def) return null;
+                return {
+                    ...def,
+                    width: cfg.width ?? def.width,
+                    title: cfg.title ?? def.title,
+                };
+            }).filter(Boolean);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [columnConfig, drivers, vehicles]);
+    }, [columnConfig, drivers, vehicles, hiddenColumns]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -533,16 +590,20 @@ export default function OperationsPage() {
                         dropoff: typeof item.dropoff === 'string' ? { location: item.dropoff, rawLocation: item.dropoff } : item.dropoff,
                         direction,
                         transferType: isShuttle ? 'SHUTTLE' : 'PRIVATE',
-                        driverName: 'Atanmadı', // Placeholder
-                        plateNumber: '-', // Placeholder
-                        passport: '-', // Placeholder
-                        uetds: 'Gönderilmedi', // Placeholder
-                        agencyNote: item.notes || '',
-                        pax: item.adults || (item.vehicle?.pax) || 1, // Fix pax mapping
-                        // Fix Phone Mapping
+                        driverName: 'Atanmadı',
+                        plateNumber: '-',
+                        passport: '-',
+                        uetds: 'Gönderilmedi',
+                        agencyNote: item.notes || item.metadata?.agencyNotes || '',
+                        pax: item.adults || (item.vehicle?.pax) || 1,
+                        // Fix customer name mapping
+                        contactName: item.contactName || item.customer?.name || item.passengerName || '',
+                        // Fix agency name mapping
+                        agencyName: item.agencyName || item.agency?.name || item.partnerName || (item.agencyId ? `Acente#${item.agencyId.slice(-4)}` : null),
                         customer: {
                             ...item.customer,
-                            phone: item.passengerPhone || item.contactPhone || '-'
+                            name: item.contactName || item.customer?.name || item.passengerName || '',
+                            phone: item.passengerPhone || item.contactPhone || item.customer?.phone || '-'
                         }
                     };
                 });
@@ -686,28 +747,53 @@ export default function OperationsPage() {
     }, []);
 
     const handleVehicleChange = async (bookingId: string, vehicleId: string) => {
+        // Find if this vehicle has an assigned driver
+        const selectedVehicle = vehicles.find((v: any) => v.id === vehicleId);
+        const autoDriverId = selectedVehicle?.driverId || null;
+
         // Optimistic Update
         setBookings(prev => prev.map((b: any) =>
-            b.id === bookingId ? { ...b, assignedVehicleId: vehicleId } : b
+            b.id === bookingId
+                ? { ...b, assignedVehicleId: vehicleId, ...(autoDriverId ? { driverId: autoDriverId } : {}) }
+                : b
         ));
         try {
-            await apiClient.patch(`/api/transfer/bookings/${bookingId}`, { assignedVehicleId: vehicleId });
-            message.success('Araç ataması güncellendi');
+            const payload: any = { assignedVehicleId: vehicleId };
+            if (autoDriverId) payload.driverId = autoDriverId;
+            await apiClient.patch(`/api/transfer/bookings/${bookingId}`, payload);
+            if (autoDriverId) {
+                const driver = drivers.find((d: any) => (d.user?.id || d.id) === autoDriverId);
+                message.success(`Araç atandı${driver ? ` — Şöför: ${driver.firstName} ${driver.lastName}` : ''}`);
+            } else {
+                message.success('Araç ataması güncellendi');
+            }
         } catch (error) {
             message.error('Araç atanamadı');
         }
     };
 
     const handleDriverChange = async (bookingId: string, driverId: string) => {
+        // Find if this driver has an assigned vehicle
+        const autoVehicle = vehicles.find((v: any) => v.driverId === driverId) || null;
+        const autoVehicleId = autoVehicle?.id || null;
+
         // Optimistic Update
         setBookings(prev => prev.map((b: any) =>
-            b.id === bookingId ? { ...b, driverId } : b
+            b.id === bookingId
+                ? { ...b, driverId, ...(autoVehicleId ? { assignedVehicleId: autoVehicleId } : {}) }
+                : b
         ));
         try {
-            await apiClient.patch(`/api/transfer/bookings/${bookingId}`, { driverId });
-            message.success('Şoför ataması güncellendi');
+            const payload: any = { driverId };
+            if (autoVehicleId) payload.assignedVehicleId = autoVehicleId;
+            await apiClient.patch(`/api/transfer/bookings/${bookingId}`, payload);
+            if (autoVehicleId) {
+                message.success(`Şöför atandı — Araç: ${autoVehicle.plateNumber} otomatik seçildi`);
+            } else {
+                message.success('Şöför ataması güncellendi');
+            }
         } catch (error) {
-            message.error('Şoför atanamadı');
+            message.error('Şöför atanamadı');
         }
     };
 
@@ -783,122 +869,227 @@ export default function OperationsPage() {
 
     return (
         <AdminGuard>
-            <AdminLayout selectedKey="operations-list">
-                <div style={{ paddingBottom: 24 }}>
-                    {/* Header Filters */}
-                    <Card bodyStyle={{ padding: '16px' }} style={{ marginBottom: 16 }}>
-                        <Row gutter={[16, 16]} align="middle">
-                            <Col>
-                                <Space>
-                                    <Button type={filters.direction === 'ALL' ? 'primary' : 'default'} onClick={() => setFilters({ ...filters, direction: 'ALL' })}>HEPSİ</Button>
-                                    <Button type={filters.direction === 'DEPARTURE' ? 'primary' : 'default'} icon={<SwapRightOutlined rotate={-45} />} onClick={() => setFilters({ ...filters, direction: 'DEPARTURE' })}>GİDİŞ</Button>
-                                    <Button type={filters.direction === 'ARRIVAL' ? 'primary' : 'default'} icon={<SwapRightOutlined rotate={45} />} onClick={() => setFilters({ ...filters, direction: 'ARRIVAL' })}>GELİŞ</Button>
-                                    <Button type={filters.direction === 'INTER' ? 'primary' : 'default'} icon={<SwapRightOutlined />} onClick={() => setFilters({ ...filters, direction: 'INTER' })}>ARA</Button>
-                                </Space>
-                            </Col>
-                            <Col flex="auto" style={{ textAlign: 'right' }}>
-                                <Badge count={bookings.filter((b: any) => b.status === 'PENDING').length} style={{ marginRight: 8 }}>
-                                    <Button type="primary" danger>ONAY BEKLEYEN</Button>
-                                </Badge>
+            <AdminLayout selectedKey="operations-list" fullWidth>
+                <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
 
-                                <Space>
-                                    <Button icon={<EditOutlined />} onClick={openEditModal}>Başlıkları Düzenle</Button>
-                                    <Button icon={<BgColorsOutlined />} onClick={openColorModal}>Renk Ayarları</Button>
-                                    <Button icon={<SaveOutlined />} onClick={saveLayout}>Görünümü Kaydet</Button>
-                                    <Tooltip title="Varsayılan Görünüme Dön">
-                                        <Button icon={<UndoOutlined />} onClick={resetLayout} />
-                                    </Tooltip>
-                                    <Button style={{ marginLeft: 8 }} icon={<FileExcelOutlined />}>Excel</Button>
-                                </Space>
+                    {/* ── FILTER BAR ── */}
+                    <div style={{
+                        background: '#fff',
+                        borderBottom: '1px solid #e5e7eb',
+                        padding: '10px 20px',
+                        flexShrink: 0,
+                    }}>
+                        {/* Row 1: Direction tabs + action buttons */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                            <Space size={4} wrap>
+                                {[
+                                    { key: 'ALL', label: 'HEPSİ' },
+                                    { key: 'DEPARTURE', label: '↗ GİDİŞ' },
+                                    { key: 'ARRIVAL', label: '↙ GELİŞ' },
+                                    { key: 'INTER', label: '→ ARA' },
+                                ].map(({ key, label }) => (
+                                    <button
+                                        key={key}
+                                        onClick={() => setFilters({ ...filters, direction: key })}
+                                        style={{
+                                            padding: '5px 14px',
+                                            borderRadius: 6,
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            fontWeight: 600,
+                                            fontSize: 12,
+                                            background: filters.direction === key ? '#6366f1' : '#f3f4f6',
+                                            color: filters.direction === key ? '#fff' : '#374151',
+                                            transition: 'all 0.15s',
+                                        }}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+
+                                <Badge count={bookings.filter((b: any) => b.status === 'PENDING').length} size="small">
+                                    <Button
+                                        size="small"
+                                        danger
+                                        type={bookings.filter((b: any) => b.status === 'PENDING').length > 0 ? 'primary' : 'default'}
+                                        style={{ borderRadius: 6, fontWeight: 600, fontSize: 12 }}
+                                    >
+                                        ONAY BEKLEYEN
+                                    </Button>
+                                </Badge>
+                            </Space>
+
+                            <Space size={4} wrap>
+                                <Popover
+                                    trigger="click"
+                                    title={<span style={{ fontWeight: 700 }}>Sütun Görünürlüğü</span>}
+                                    content={
+                                        <div style={{ maxHeight: 280, overflowY: 'auto', width: 180 }}>
+                                            {columnConfig.map(cfg => {
+                                                const def = defaultColumns.find(d => d.key === cfg.key);
+                                                const label = cfg.title || def?.title || cfg.key;
+                                                const isHidden = hiddenColumns.has(cfg.key);
+                                                return (
+                                                    <div
+                                                        key={cfg.key}
+                                                        onClick={() => toggleColumnVisibility(cfg.key)}
+                                                        style={{
+                                                            padding: '5px 8px', cursor: 'pointer', borderRadius: 4,
+                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                            background: isHidden ? '#f9fafb' : '#fff',
+                                                            marginBottom: 2,
+                                                        }}
+                                                    >
+                                                        {isHidden
+                                                            ? <EyeInvisibleOutlined style={{ color: '#9ca3af' }} />
+                                                            : <EyeOutlined style={{ color: '#6366f1' }} />
+                                                        }
+                                                        <span style={{ fontSize: 12, color: isHidden ? '#9ca3af' : '#111' }}>{label}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    }
+                                >
+                                    <Button size="small" icon={<EyeOutlined />} style={{ borderRadius: 6 }}>Sütunlar</Button>
+                                </Popover>
+                                <Button size="small" icon={<EditOutlined />} onClick={openEditModal} style={{ borderRadius: 6 }}>Başlıklar</Button>
+                                <Button size="small" icon={<BgColorsOutlined />} onClick={openColorModal} style={{ borderRadius: 6 }}>Renkler</Button>
+                                <Button size="small" icon={<SaveOutlined />} onClick={saveLayout} style={{ borderRadius: 6 }}>Kaydet</Button>
+                                <Tooltip title="Varsayılana Dön">
+                                    <Button size="small" icon={<UndoOutlined />} onClick={resetLayout} style={{ borderRadius: 6 }} />
+                                </Tooltip>
+                                <Button size="small" icon={<ReloadOutlined />} onClick={fetchBookings} loading={loading} style={{ borderRadius: 6 }} />
+                                <Button size="small" icon={<FileExcelOutlined />} style={{ borderRadius: 6, background: '#16a34a', color: '#fff', border: 'none' }}>Excel</Button>
+                                <Tooltip title={isFullscreen ? 'Tam ekrandan çık (ESC)' : 'Tam ekran'}>
+                                    <Button
+                                        size="small"
+                                        icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+                                        onClick={toggleFullscreen}
+                                        style={{
+                                            borderRadius: 6,
+                                            background: isFullscreen ? '#6366f1' : undefined,
+                                            color: isFullscreen ? '#fff' : undefined,
+                                            border: isFullscreen ? 'none' : undefined,
+                                        }}
+                                    />
+                                </Tooltip>
+                            </Space>
+                        </div>
+
+                        {/* Row 2: Compact filters */}
+                        <Row gutter={[8, 8]} align="middle">
+                            <Col xs={12} sm={8} md={5} lg={4}>
+                                <RangePicker
+                                    size="small"
+                                    style={{ width: '100%' }}
+                                    defaultValue={[dayjs(), dayjs().add(7, 'd')]}
+                                    format="DD.MM.YY"
+                                    placeholder={['Başlangıç', 'Bitiş']}
+                                />
+                            </Col>
+                            <Col xs={12} sm={6} md={3} lg={2}>
+                                <Select
+                                    size="small"
+                                    style={{ width: '100%' }}
+                                    defaultValue="ALL"
+                                    onChange={(val) => setFilters({ ...filters, transferType: val })}
+                                    options={[
+                                        { value: 'ALL', label: 'Tip: Hepsi' },
+                                        { value: 'SHUTTLE', label: 'Shuttle' },
+                                        { value: 'PRIVATE', label: 'Özel' },
+                                    ]}
+                                />
+                            </Col>
+                            <Col xs={12} sm={8} md={4} lg={3}>
+                                <Select
+                                    size="small"
+                                    style={{ width: '100%' }}
+                                    placeholder="Acente"
+                                    allowClear
+                                >
+                                    <Option value="direct">Direkt</Option>
+                                </Select>
+                            </Col>
+                            <Col xs={12} sm={8} md={4} lg={3}>
+                                <Select
+                                    size="small"
+                                    style={{ width: '100%' }}
+                                    placeholder="Sürücü"
+                                    showSearch
+                                    allowClear
+                                    optionFilterProp="label"
+                                    options={drivers.map((d: any) => ({
+                                        value: d.user?.id || d.id,
+                                        label: `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.id
+                                    }))}
+                                    onChange={(val) => setFilters(prev => ({ ...prev, driver: val || 'ALL' }))}
+                                />
+                            </Col>
+                            <Col xs={12} sm={8} md={4} lg={3}>
+                                <Select
+                                    size="small"
+                                    style={{ width: '100%' }}
+                                    placeholder="Araç"
+                                    showSearch
+                                    allowClear
+                                    optionFilterProp="label"
+                                    options={vehicles.map((v: any) => ({
+                                        value: v.id,
+                                        label: `${v.plateNumber} - ${v.model || v.vehicleType || ''}`
+                                    }))}
+                                    onChange={(val) => setFilters(prev => ({ ...prev, vehicle: val || 'ALL' }))}
+                                />
+                            </Col>
+                            <Col xs={12} sm={6} md={3} lg={2}>
+                                <Select size="small" style={{ width: '100%' }} placeholder="Durum" allowClear
+                                    options={[
+                                        { value: 'active', label: '🟢 Aktif' },
+                                        { value: 'cancelled', label: '🔴 İptal' },
+                                    ]}
+                                />
+                            </Col>
+                            <Col xs={24} sm={4} md={3} lg={2}>
+                                <Button type="primary" size="small" icon={<FilterOutlined />} block onClick={fetchBookings} style={{ borderRadius: 6 }}>
+                                    Filtrele
+                                </Button>
                             </Col>
                         </Row>
+                    </div>
 
-                        <div style={{ marginTop: 16, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
-                            <Row gutter={[12, 12]}>
-                                <Col span={3}>
-                                    <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Tarih Aralığı</Text>
-                                    <RangePicker
-                                        size="small"
-                                        style={{ width: '100%' }}
-                                        defaultValue={[dayjs(), dayjs().add(7, 'd')]}
-                                        format="DD.MM.YYYY"
-                                    />
-                                </Col>
-                                <Col span={2}>
-                                    <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Transfer Tipi</Text>
-                                    <Select
-                                        size="small"
-                                        style={{ width: '100%' }}
-                                        defaultValue="ALL"
-                                        onChange={(val) => setFilters({ ...filters, transferType: val })}
-                                    >
-                                        <Option value="ALL">Hepsi</Option>
-                                        <Option value="SHUTTLE">Shuttle</Option>
-                                        <Option value="PRIVATE">Özel</Option>
-                                    </Select>
-                                </Col>
-                                <Col span={3}>
-                                    <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Acente</Text>
-                                    <Select size="small" style={{ width: '100%' }} placeholder="Hepsi" allowClear>
-                                        <Option value="direct">Direkt</Option>
-                                    </Select>
-                                </Col>
-                                <Col span={3}>
-                                    <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Alt Acente</Text>
-                                    <Select size="small" style={{ width: '100%' }} placeholder="Hepsi" disabled />
-                                </Col>
-                                <Col span={3}>
-                                    <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Sürücü</Text>
-                                    <Select
-                                        size="small"
-                                        style={{ width: '100%' }}
-                                        placeholder="Hepsi"
-                                        showSearch
-                                        allowClear
-                                        optionFilterProp="label"
-                                        options={drivers.map((d: any) => ({
-                                            value: d.user?.id || d.id,
-                                            label: `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.name || d.id
-                                        }))}
-                                        onChange={(val) => setFilters(prev => ({ ...prev, driver: val || 'ALL' }))}
-                                    />
-                                </Col>
-                                <Col span={3}>
-                                    <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Araç</Text>
-                                    <Select
-                                        size="small"
-                                        style={{ width: '100%' }}
-                                        placeholder="Hepsi"
-                                        showSearch
-                                        allowClear
-                                        optionFilterProp="label"
-                                        options={vehicles.map((v: any) => ({
-                                            value: v.id,
-                                            label: `${v.plateNumber} - ${v.model || v.vehicleType || ''}`
-                                        }))}
-                                        onChange={(val) => setFilters(prev => ({ ...prev, vehicle: val || 'ALL' }))}
-                                    />
-                                </Col>
-                                <Col span={2}>
-                                    <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Durum</Text>
-                                    <Select size="small" style={{ width: '100%' }} placeholder="Aktif">
-                                        <Option value="active">Aktif</Option>
-                                        <Option value="cancelled">İptal</Option>
-                                    </Select>
-                                </Col>
-                                <Col span={3} style={{ display: 'flex', alignItems: 'flex-end' }}>
-                                    <Button type="primary" size="small" icon={<FilterOutlined />} block onClick={fetchBookings}>Filtrele</Button>
-                                </Col>
-                            </Row>
-                        </div>
-                    </Card>
+                    {/* ── TABLE INFO BAR ── */}
+                    <div style={{
+                        background: '#f8fafc',
+                        borderBottom: '1px solid #e5e7eb',
+                        padding: '6px 20px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexShrink: 0,
+                    }}>
+                        <Space size={16}>
+                            <Text style={{ fontSize: 12 }}>
+                                <strong>{bookings.length}</strong> kayıt listeleniyor
+                            </Text>
+                            {['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].map(s => {
+                                const cnt = bookings.filter((b: any) => b.status === s).length;
+                                if (!cnt) return null;
+                                const colors: Record<string, string> = { PENDING: '#d97706', CONFIRMED: '#2563eb', COMPLETED: '#16a34a', CANCELLED: '#dc2626' };
+                                const labels: Record<string, string> = { PENDING: 'Bekliyor', CONFIRMED: 'Onaylı', COMPLETED: 'Tamamlandı', CANCELLED: 'İptal' };
+                                return (
+                                    <span key={s} style={{ fontSize: 11, color: colors[s], fontWeight: 600 }}>
+                                        {labels[s]}: {cnt}
+                                    </span>
+                                );
+                            })}
+                        </Space>
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                            <DragOutlined /> Sütunları sürükleyip genişletebilirsiniz
+                        </Text>
+                    </div>
 
-                    {/* Main Table */}
-                    <Card bodyStyle={{ padding: 0 }}>
-                        <div style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between' }}>
-                            <Text>Toplam {bookings.length} kayıt listelenmiştir.</Text>
-                            <Text type="secondary" style={{ fontSize: 12 }}><DragOutlined /> Sütun başlıklarını sürükleyebilir ve genişliklerini ayarlayabilirsiniz</Text>
-                        </div>
+                    {/* ── MAIN TABLE ── */}
+                    <div style={{ flex: 1, overflow: 'auto', padding: '0' }}>
                         <DndContext
                             sensors={sensors}
                             modifiers={[restrictToHorizontalAxis]}
@@ -915,7 +1106,7 @@ export default function OperationsPage() {
                                         onHeaderCell: (column: any) => ({
                                             width: column.width,
                                             onResize: handleResize(index),
-                                            id: column.key, // Pass ID for Sortable
+                                            id: column.key,
                                         }),
                                     }))}
                                     components={{
@@ -932,103 +1123,101 @@ export default function OperationsPage() {
                                         style: { backgroundColor: getRowColor(record) || undefined }
                                     })}
                                     loading={loading}
-                                    pagination={{ pageSize: 20, showSizeChanger: true }}
+                                    pagination={{
+                                        pageSize: 20,
+                                        showSizeChanger: true,
+                                        size: 'small',
+                                        style: { padding: '8px 16px' }
+                                    }}
                                     size="small"
-                                    scroll={{ x: 1800 }} // Increased schema width
+                                    scroll={{ x: 1800, y: 'calc(100vh - 240px)' }}
+                                    sticky
                                 />
                             </SortableContext>
                         </DndContext>
-                    </Card>
-
-                    {/* Edit Columns Modal */}
-                    <Modal
-                        title="Sütun Başlıklarını Düzenle"
-                        open={editModalVisible}
-                        onOk={saveColumnTitles}
-                        onCancel={() => setEditModalVisible(false)}
-                        width={600}
-                    >
-                        <Row gutter={[16, 16]} style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                            {tempColumns.map((col: any) => (
-                                <Col span={12} key={col.key}>
-                                    <div style={{ marginBottom: 4 }}>
-                                        <Text type="secondary" style={{ fontSize: 12 }}>{defaultColumns.find(c => c.key === col.key)?.title || col.key}</Text>
-                                    </div>
-                                    <Input
-                                        value={col.title}
-                                        onChange={(e) => handleTitleChange(col.key, e.target.value)}
-                                        placeholder={defaultColumns.find(c => c.key === col.key)?.title || col.key}
-                                    />
-                                </Col>
-                            ))}
-                        </Row>
-                    </Modal>
-                    {/* Color Settings Modal */}
-                    <Modal
-                        title="Renk Ayarları — Transfer Durumuna Göre Satır Rengi"
-                        open={colorModalVisible}
-                        onOk={saveColors}
-                        onCancel={() => setColorModalVisible(false)}
-                        okText="Renkleri Kaydet"
-                        cancelText="İptal"
-                        width={500}
-                        footer={[
-                            <Button key="reset" onClick={resetColors}>Varsayılana Sıfırla</Button>,
-                            <Button key="cancel" onClick={() => setColorModalVisible(false)}>İptal</Button>,
-                            <Button key="ok" type="primary" onClick={saveColors}>Renkleri Kaydet</Button>,
-                        ]}
-                    >
-                        <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                            {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                                <div key={key} style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-                                    <div
-                                        style={{
-                                            width: 120,
-                                            padding: '4px 8px',
-                                            borderRadius: 4,
-                                            backgroundColor: tempColors[key] || '#fff',
-                                            border: '1px solid #d9d9d9',
-                                            fontSize: 13,
-                                            fontWeight: 500,
-                                            textAlign: 'center',
-                                        }}
-                                    >
-                                        {label}
-                                    </div>
-                                    <input
-                                        type="color"
-                                        value={tempColors[key] || '#ffffff'}
-                                        onChange={(e) => setTempColors(prev => ({ ...prev, [key]: e.target.value }))}
-                                        style={{ width: 48, height: 36, border: 'none', cursor: 'pointer', borderRadius: 4 }}
-                                    />
-                                    <div style={{ flex: 1, height: 28, borderRadius: 4, backgroundColor: tempColors[key] || '#fff', border: '1px solid #eee' }} />
-                                    <Button size="small" onClick={() => setTempColors(prev => ({ ...prev, [key]: DEFAULT_COLORS[key] || '#ffffff' }))}>
-                                        ↺
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                    </Modal>
-
-                    {/* Message Driver Modal */}
-                    <Modal
-                        title={`Sürücüye Mesaj Gönder: ${selectedDriver?.name || ''}`}
-                        open={messageModalVisible}
-                        onOk={handleSendMessage}
-                        onCancel={() => setMessageModalVisible(false)}
-                        okText="Gönder"
-                        cancelText="İptal"
-                        confirmLoading={messageLoading}
-                    >
-                        <Input.TextArea
-                            rows={4}
-                            placeholder="Mesajınızı yazın..."
-                            value={messageContent}
-                            onChange={(e) => setMessageContent(e.target.value)}
-                        />
-                    </Modal>
+                    </div>
                 </div>
+
+                {/* Edit Columns Modal */}
+                <Modal
+                    title="Sütun Başlıklarını Düzenle"
+                    open={editModalVisible}
+                    onOk={saveColumnTitles}
+                    onCancel={() => setEditModalVisible(false)}
+                    width={600}
+                >
+                    <Row gutter={[16, 16]} style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                        {tempColumns.map((col: any) => (
+                            <Col span={12} key={col.key}>
+                                <div style={{ marginBottom: 4 }}>
+                                    <Text type="secondary" style={{ fontSize: 12 }}>{defaultColumns.find(c => c.key === col.key)?.title || col.key}</Text>
+                                </div>
+                                <Input
+                                    value={col.title}
+                                    onChange={(e) => handleTitleChange(col.key, e.target.value)}
+                                    placeholder={defaultColumns.find(c => c.key === col.key)?.title || col.key}
+                                />
+                            </Col>
+                        ))}
+                    </Row>
+                </Modal>
+
+                {/* Color Settings Modal */}
+                <Modal
+                    title="Renk Ayarları — Transfer Durumuna Göre Satır Rengi"
+                    open={colorModalVisible}
+                    onOk={saveColors}
+                    onCancel={() => setColorModalVisible(false)}
+                    okText="Renkleri Kaydet"
+                    cancelText="İptal"
+                    width={500}
+                    footer={[
+                        <Button key="reset" onClick={resetColors}>Varsayılana Sıfırla</Button>,
+                        <Button key="cancel" onClick={() => setColorModalVisible(false)}>İptal</Button>,
+                        <Button key="ok" type="primary" onClick={saveColors}>Renkleri Kaydet</Button>,
+                    ]}
+                >
+                    <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                        {Object.entries(STATUS_LABELS).map(([key, label]) => (
+                            <div key={key} style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{
+                                    width: 120, padding: '4px 8px', borderRadius: 4,
+                                    backgroundColor: tempColors[key] || '#fff',
+                                    border: '1px solid #d9d9d9', fontSize: 13, fontWeight: 500, textAlign: 'center',
+                                }}>
+                                    {label}
+                                </div>
+                                <input
+                                    type="color"
+                                    value={tempColors[key] || '#ffffff'}
+                                    onChange={(e) => setTempColors(prev => ({ ...prev, [key]: e.target.value }))}
+                                    style={{ width: 48, height: 36, border: 'none', cursor: 'pointer', borderRadius: 4 }}
+                                />
+                                <div style={{ flex: 1, height: 28, borderRadius: 4, backgroundColor: tempColors[key] || '#fff', border: '1px solid #eee' }} />
+                                <Button size="small" onClick={() => setTempColors(prev => ({ ...prev, [key]: DEFAULT_COLORS[key] || '#ffffff' }))}>↺</Button>
+                            </div>
+                        ))}
+                    </div>
+                </Modal>
+
+                {/* Message Driver Modal */}
+                <Modal
+                    title={`Sürücüye Mesaj Gönder: ${selectedDriver?.name || ''}`}
+                    open={messageModalVisible}
+                    onOk={handleSendMessage}
+                    onCancel={() => setMessageModalVisible(false)}
+                    okText="Gönder"
+                    cancelText="İptal"
+                    confirmLoading={messageLoading}
+                >
+                    <Input.TextArea
+                        rows={4}
+                        placeholder="Mesajınızı yazın..."
+                        value={messageContent}
+                        onChange={(e) => setMessageContent(e.target.value)}
+                    />
+                </Modal>
             </AdminLayout>
-        </AdminGuard >
+        </AdminGuard>
     );
 }

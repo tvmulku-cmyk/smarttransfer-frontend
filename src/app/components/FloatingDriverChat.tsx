@@ -38,7 +38,9 @@ export default function FloatingDriverChat() {
     const [onlineDrivers, setOnlineDrivers] = useState<Driver[]>([]);
     const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+    const [lastActivity, setLastActivity] = useState<Record<string, number>>({});
     const activeChatRef = useRef<{ driverId: string | undefined, userId: string | undefined }>({ driverId: undefined, userId: undefined });
+    const processedMessages = useRef<Set<string>>(new Set());
 
     useEffect(() => {
         activeChatRef.current = { driverId: selectedDriver?.id, userId: user?.id };
@@ -132,9 +134,21 @@ export default function FloatingDriverChat() {
         });
 
         socket.on('new_message', (msg: any) => {
+            if (processedMessages.current.has(msg.id)) return;
+            processedMessages.current.add(msg.id);
+            if (processedMessages.current.size > 200) {
+                const it = processedMessages.current.values();
+                processedMessages.current.delete(it.next().value as string);
+            }
+
             const { driverId, userId } = activeChatRef.current;
             const isMe = msg.senderId === userId;
             const otherPartyId = isMe ? msg.receiverId : msg.senderId;
+
+            setLastActivity(prev => ({
+                ...prev,
+                [otherPartyId]: Date.now()
+            }));
 
             if (driverId === otherPartyId) {
                 // Chat is actively open with this driver
@@ -208,6 +222,13 @@ export default function FloatingDriverChat() {
             });
             const json = await res.json();
             if (json.success) {
+                if (!processedMessages.current.has(json.data.id)) {
+                    processedMessages.current.add(json.data.id);
+                }
+                setLastActivity(prev => ({
+                    ...prev,
+                    [selectedDriver.id]: Date.now()
+                }));
                 setMessages(prev => {
                     if (prev.find(m => m.id === json.data.id)) return prev;
                     return [...prev, json.data];
@@ -264,6 +285,19 @@ export default function FloatingDriverChat() {
         setMessages([]);
         setView('chat');
     };
+
+    const sortedDrivers = [...onlineDrivers].sort((a, b) => {
+        const unreadA = unreadCounts[a.id] || 0;
+        const unreadB = unreadCounts[b.id] || 0;
+        if (unreadA > 0 && unreadB === 0) return -1;
+        if (unreadB > 0 && unreadA === 0) return 1;
+
+        const timeA = lastActivity[a.id] || 0;
+        const timeB = lastActivity[b.id] || 0;
+        if (timeA !== timeB) return timeB - timeA;
+
+        return a.fullName.localeCompare(b.fullName);
+    });
 
     return (
         <div style={{ position: 'fixed', bottom: 28, right: 28, zIndex: 9999 }}>
@@ -360,13 +394,13 @@ export default function FloatingDriverChat() {
                     {/* Driver List */}
                     {view === 'list' && (
                         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-                            {onlineDrivers.length === 0 ? (
+                            {sortedDrivers.length === 0 ? (
                                 <div style={{ textAlign: 'center', color: '#9ca3af', paddingTop: 60 }}>
                                     <UserOutlined style={{ fontSize: 40, marginBottom: 12 }} />
                                     <p style={{ margin: 0 }}>Şu an online sürücü yok</p>
                                 </div>
                             ) : (
-                                onlineDrivers.map(driver => (
+                                sortedDrivers.map(driver => (
                                     <div
                                         key={driver.id}
                                         onClick={() => openChat(driver)}

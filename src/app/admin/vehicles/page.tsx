@@ -28,7 +28,11 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   LoadingOutlined,
+  SearchOutlined,
+  UserOutlined,
+  CarOutlined,
 } from '@ant-design/icons';
+import { Avatar, List, Tooltip } from 'antd';
 import apiClient from '../../../lib/api-client';
 import dayjs from 'dayjs';
 import AdminGuard from '../AdminGuard';
@@ -108,6 +112,13 @@ const VehiclesPage: React.FC = () => {
   const [uploadLoading, setUploadLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string>();
 
+  // Driver assignment state
+  const [driverModalVisible, setDriverModalVisible] = useState(false);
+  const [selectedVehicleForDriver, setSelectedVehicleForDriver] = useState<Vehicle | null>(null);
+  const [drivers, setDrivers] = useState<any[]>([]);
+  const [driverLoading, setDriverLoading] = useState(false);
+  const [driverSearch, setDriverSearch] = useState('');
+
   /* MOCK DATA REMOVED */
 
   const fetchVehicles = async () => {
@@ -137,8 +148,39 @@ const VehiclesPage: React.FC = () => {
 
   useEffect(() => {
     fetchVehicles();
-    fetchVehicleTypes(); // Fetch types on mount
+    fetchVehicleTypes();
+    fetchDrivers();
   }, []);
+
+  const fetchDrivers = async () => {
+    try {
+      const res = await apiClient.get('/api/personnel');
+      if (res.data.success) {
+        const DRIVER_KEYWORDS = ['driver', 'şöför', 'sofor', 'sürücü', 'surucü', 'surücu'];
+        const driverList = res.data.data.filter((p: any) => {
+          const title = (p.jobTitle || '').toLowerCase().trim();
+          return DRIVER_KEYWORDS.some(kw => title.includes(kw));
+        });
+        setDrivers(driverList);
+      }
+    } catch (err) {
+      console.error('fetchDrivers error:', err);
+    }
+  };
+
+  const handleAssignDriver = async (vehicleId: number | string, driverId: string | null) => {
+    setDriverLoading(true);
+    try {
+      await apiClient.patch(`/api/vehicles/${vehicleId}/driver`, { driverId });
+      message.success(driverId ? 'Şöför atandı' : 'Şöför ataması kaldırıldı');
+      fetchVehicles();
+      setDriverModalVisible(false);
+    } catch (err) {
+      message.error('Şöför atanamadı');
+    } finally {
+      setDriverLoading(false);
+    }
+  };
 
   const filteredVehicles = useMemo(() => {
     return vehicles.filter((v) => {
@@ -313,219 +355,455 @@ const VehiclesPage: React.FC = () => {
     }
   };
 
-  const columns = [
-    {
-      title: 'ID',
-      dataIndex: 'id',
-      width: 60,
-    },
-    {
-      title: 'Kullanım',
-      dataIndex: 'usageType',
-      render: (_: any, record: Vehicle) => {
-        const handleUsageToggle = async (newType: string) => {
-          try {
-            await apiClient.put(`/api/vehicles/${record.id}`, {
-              ...record,
-              usageType: newType,
-              shuttleMode: newType === 'SHUTTLE' ? (record.shuttleMode || 'FLEXIBLE') : null,
-            });
-            message.success(`Araç tipi "${newType}" olarak güncellendi`);
-            fetchVehicles();
-          } catch (err) {
-            message.error('Güncelleme başarısız');
-          }
-        };
+  const USAGE_LABELS: Record<string, { label: string; color: string }> = {
+    TRANSFER: { label: 'Özel Transfer', color: '#6366f1' },
+    SHUTTLE: { label: 'Shuttle', color: '#0ea5e9' },
+    TOUR: { label: 'Tur', color: '#f59e0b' },
+  };
 
-        return (
-          <Space direction="vertical" size={2}>
-            <Select
-              size="small"
-              value={record.usageType || 'TRANSFER'}
-              style={{ width: 150 }}
-              onChange={handleUsageToggle}
-              options={[
-                { value: 'TRANSFER', label: '🚗 Özel Transfer' },
-                { value: 'SHUTTLE', label: '🚌 Shuttle' },
-                { value: 'TOUR', label: '🗺 Tur' },
-              ]}
-            />
-            {record.usageType === 'SHUTTLE' && record.shuttleMode && (
-              <Tag color="cyan" style={{ fontSize: 11 }}>
-                {record.shuttleMode === 'ROUTE_BASED' ? 'Sabit Hat' : 'Esnek'}
-              </Tag>
-            )}
-          </Space>
-        );
-      },
-    },
-    {
-      title: 'Araç Adı',
-      dataIndex: 'name',
-      render: (_: any, record: Vehicle) => (
-        <div>
-          <Text strong>{record.name}</Text>
-          <br />
-          <Text type="secondary">
-            {record.brand || '-'} {record.model || ''}
-          </Text>
-        </div>
-      ),
-    },
-    {
-      title: 'Plaka',
-      dataIndex: 'plateNumber',
-    },
-    {
-      title: 'Tip / Sınıf',
-      render: (_: any, record: Vehicle) => {
-        const classMap: Record<string, string> = {
-          'ECONOMY': 'Ekonomik',
-          'BUSINESS': 'Business',
-          'VIP': 'VIP',
-          'MINIBUS': 'Minibüs',
-          'BUS': 'Otobüs'
-        };
-        const className = record.vehicleClass ? (classMap[record.vehicleClass] || record.vehicleClass) : null;
+  const CLASS_COLORS: Record<string, string> = {
+    ECONOMY: '#64748b',
+    BUSINESS: '#0891b2',
+    VIP: '#7c3aed',
+    MINIBUS: '#ca8a04',
+    BUS: '#dc2626',
+  };
 
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {/* Prioritize showing the actual type name if available, else usage type */}
-            <Tag color="blue">{(record as any).vehicleTypeDetails?.name || record.vehicleType}</Tag>
-            {className && <Tag color="geekblue">{className}</Tag>}
-          </div>
-        );
-      },
-    },
-    {
-      title: 'Kapasite',
-      render: (_: any, record: Vehicle) => (
-        <span>
-          {record.capacity} yolcu
-          {record.luggage != null && ` / ${record.luggage} bagaj`}
-        </span>
-      ),
-    },
-    {
-      title: 'Fiyatlama',
-      render: (_: any, record: Vehicle) => (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <Text type="secondary">
-            km: {record.basePricePerKm != null ? `${record.basePricePerKm} €` : '-'}
-          </Text>
-          <Text type="secondary">
-            saat: {record.basePricePerHour != null ? `${record.basePricePerHour} €` : '-'}
-          </Text>
-        </div>
-      ),
-    },
-    {
-      title: 'Bebek Koltuğu',
-      dataIndex: 'hasBabySeat',
-      render: (val: boolean, record: Vehicle) =>
-        val ? (
-          <Tag color="green">
-            Var {record.maxBabySeats ? `(${record.maxBabySeats} adet)` : ''}
-          </Tag>
-        ) : (
-          <Tag>Yok</Tag>
-        ),
-    },
-    {
-      title: 'Durum',
-      dataIndex: 'isActive',
-      render: (val: boolean) =>
-        val ? <Tag color="green">Aktif</Tag> : <Tag color="red">Pasif</Tag>,
-    },
-    {
-      title: 'Oluşturulma',
-      dataIndex: 'createdAt',
-      render: (val: string) => dayjs(val).format('DD.MM.YYYY HH:mm'),
-    },
-    {
-      title: 'İşlemler',
-      key: 'actions',
-      render: (_: any, record: Vehicle) => (
-        <Space>
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEditVehicle(record)}
-          >
-            Düzenle
-          </Button>
-          <Switch
-            checked={record.isActive}
-            checkedChildren={<CheckCircleOutlined />}
-            unCheckedChildren={<CloseCircleOutlined />}
-            onChange={(checked) => handleToggleActive(record, checked)}
-          />
-        </Space>
-      ),
-    },
-  ];
+  const CLASS_LABELS: Record<string, string> = {
+    ECONOMY: 'Economy', BUSINESS: 'Business', VIP: 'VIP', MINIBUS: 'Minibüs', BUS: 'Otöbüs'
+  };
+
 
   return (
     <AdminGuard>
       <AdminLayout selectedKey="vehicles">
-        <Row gutter={[16, 16]}>
-          <Col xs={24}>
-            <Card
-              title={<Title level={3} style={{ margin: 0 }}>Araç Yönetimi</Title>}
-              extra={
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={handleNewVehicle}
-                >
-                  Yeni Araç
-                </Button>
-              }
-            >
-              <Space style={{ marginBottom: 16 }} wrap>
-                <Select
-                  value={filterActive}
-                  style={{ width: 160 }}
-                  onChange={(val) => setFilterActive(val)}
-                >
-                  <Option value="all">Tümü</Option>
-                  <Option value="active">Aktif</Option>
-                  <Option value="inactive">Pasif</Option>
-                </Select>
+        {/* Page Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24 }}>
+          <div>
+            <Title level={2} style={{ margin: 0, fontWeight: 700 }}>Araç Yönetimi</Title>
+            <Text type="secondary">
+              Toplam <strong>{vehicles.length}</strong> araç &mdash;
+              Aktif: <strong style={{ color: '#16a34a' }}>{vehicles.filter(v => v.isActive).length}</strong> /
+              Pasif: <strong style={{ color: '#dc2626' }}>{vehicles.filter(v => !v.isActive).length}</strong>
+            </Text>
+          </div>
+          <Button
+            type="primary"
+            size="large"
+            icon={<PlusOutlined />}
+            onClick={handleNewVehicle}
+            style={{ background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', border: 'none', fontWeight: 600, borderRadius: 8 }}
+          >
+            + Yeni Araç
+          </Button>
+        </div>
 
-                <Select
-                  allowClear
-                  placeholder="Araç Sınıfı"
-                  style={{ width: 180 }}
-                  value={vehicleClassFilter}
-                  onChange={(val) => setVehicleClassFilter(val)}
-                >
-                  <Option value="ECONOMY">Economy</Option>
-                  <Option value="BUSINESS">Business</Option>
-                  <Option value="VIP">VIP</Option>
-                  <Option value="MINIBUS">Minibus</Option>
-                  <Option value="BUS">Bus</Option>
-                </Select>
-
-                <Input
-                  placeholder="Ara / plaka, isim, marka"
-                  style={{ width: 220 }}
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                />
-              </Space>
-
-              <Table
-                rowKey="id"
-                loading={loading}
-                dataSource={filteredVehicles}
-                columns={columns}
-                pagination={{ pageSize: 10 }}
-                scroll={{ x: 1200 }}
+        {/* Filter Bar */}
+        <Card
+          style={{ marginBottom: 20, borderRadius: 12, border: '1px solid #f0f0f0' }}
+          bodyStyle={{ padding: '12px 20px' }}
+        >
+          <Row gutter={[12, 8]} align="middle">
+            <Col xs={24} sm={8} md={6}>
+              <Input
+                prefix={<SearchOutlined style={{ color: '#9ca3af' }} />}
+                placeholder="Plaka, isim veya marka ara..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                allowClear
+                size="middle"
               />
-            </Card>
-          </Col>
+            </Col>
+            <Col xs={12} sm={8} md={5}>
+              <Select
+                value={filterActive}
+                style={{ width: '100%' }}
+                onChange={(val) => setFilterActive(val)}
+                options={[
+                  { value: 'all', label: '✅ Tüm Araçlar' },
+                  { value: 'active', label: '🟢 Aktif' },
+                  { value: 'inactive', label: '🔴 Pasif' },
+                ]}
+              />
+            </Col>
+            <Col xs={12} sm={8} md={5}>
+              <Select
+                allowClear
+                placeholder="Sınıf Filtrele"
+                style={{ width: '100%' }}
+                value={vehicleClassFilter}
+                onChange={(val) => setVehicleClassFilter(val)}
+                options={[
+                  { value: 'ECONOMY', label: 'Economy' },
+                  { value: 'BUSINESS', label: 'Business' },
+                  { value: 'VIP', label: 'VIP' },
+                  { value: 'MINIBUS', label: 'Minibüs' },
+                  { value: 'BUS', label: 'Otöbüs' },
+                ]}
+              />
+            </Col>
+            <Col xs={24} md={8} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {['TRANSFER', 'SHUTTLE', 'TOUR'].map(t => (
+                <Button
+                  key={t}
+                  size="small"
+                  style={{
+                    background: USAGE_LABELS[t].color,
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600
+                  }}
+                  onClick={() => setSearchText(t === searchText ? '' : t)}
+                >
+                  {USAGE_LABELS[t].label}
+                </Button>
+              ))}
+            </Col>
+          </Row>
+        </Card>
+
+        {/* Vehicle Grid */}
+        <Row gutter={[20, 20]}>
+          {loading && (
+            <Col span={24} style={{ textAlign: 'center', padding: 60 }}>
+              <div style={{ fontSize: 24, color: '#6366f1' }}>Yükleniyor...</div>
+            </Col>
+          )}
+          {!loading && filteredVehicles.length === 0 && (
+            <Col span={24}>
+              <Card style={{ textAlign: 'center', padding: 60, borderRadius: 16, border: '2px dashed #e5e7eb' }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>🚗</div>
+                <Title level={4} type="secondary">Araç bulunamadı</Title>
+                <Text type="secondary">Filtrelerinizi değiştirin veya yeni bir araç ekleyin.</Text>
+              </Card>
+            </Col>
+          )}
+          {filteredVehicles.map((v) => {
+            const usageInfo = USAGE_LABELS[v.usageType] || { label: v.usageType, color: '#6b7280' };
+            const classColor = CLASS_COLORS[v.vehicleClass || ''] || '#6b7280';
+            const classLabel = CLASS_LABELS[v.vehicleClass || ''] || v.vehicleClass || '';
+
+            return (
+              <Col key={v.id} xs={24} sm={12} lg={8} xl={6}>
+                <Card
+                  hoverable
+                  style={{
+                    borderRadius: 16,
+                    overflow: 'hidden',
+                    border: v.isActive ? '1px solid #e0e7ff' : '1px solid #fee2e2',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+                    transition: 'all 0.25s ease',
+                    opacity: v.isActive ? 1 : 0.75,
+                  }}
+                  bodyStyle={{ padding: 0 }}
+                >
+                  {/* Image / Gradient Header */}
+                  <div style={{
+                    height: 140,
+                    background: v.imageUrl
+                      ? `url(${v.imageUrl}) center/cover`
+                      : `linear-gradient(135deg, ${usageInfo.color}22 0%, ${classColor}33 100%)`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                  }}>
+                    {!v.imageUrl && (
+                      <div style={{ fontSize: 52, opacity: 0.6 }}>
+                        {v.usageType === 'SHUTTLE' ? '🚌' : v.usageType === 'TOUR' ? '🗯️' : '🚗'}
+                      </div>
+                    )}
+                    {/* Status Badge */}
+                    <div style={{
+                      position: 'absolute',
+                      top: 10, right: 10,
+                      background: v.isActive ? '#16a34a' : '#dc2626',
+                      color: 'white',
+                      borderRadius: 20,
+                      padding: '2px 10px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}>
+                      {v.isActive ? '• Aktif' : '• Pasif'}
+                    </div>
+                    {/* Usage Type Badge */}
+                    <div style={{
+                      position: 'absolute',
+                      top: 10, left: 10,
+                      background: usageInfo.color,
+                      color: 'white',
+                      borderRadius: 6,
+                      padding: '2px 8px',
+                      fontSize: 11,
+                      fontWeight: 600,
+                    }}>
+                      {usageInfo.label}
+                    </div>
+                    {/* Plate Number */}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: 10, left: '50%',
+                      transform: 'translateX(-50%)',
+                      background: 'rgba(0,0,0,0.65)',
+                      backdropFilter: 'blur(4px)',
+                      color: 'white',
+                      borderRadius: 6,
+                      padding: '3px 14px',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      letterSpacing: 2,
+                    }}>
+                      {v.plateNumber}
+                    </div>
+                  </div>
+
+                  {/* Card Body */}
+                  <div style={{ padding: '14px 16px 10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Text strong style={{ fontSize: 14, display: 'block' }} ellipsis={{ tooltip: v.name }}>
+                          {v.name}
+                        </Text>
+                        <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
+                          {[v.brand, v.model, v.year ? String(v.year) : null].filter(Boolean).join(' ')}
+                        </Text>
+                      </div>
+                      {classLabel && (
+                        <div style={{
+                          background: classColor + '18',
+                          color: classColor,
+                          borderRadius: 6,
+                          padding: '2px 8px',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          flexShrink: 0,
+                          marginLeft: 8,
+                        }}>
+                          {classLabel}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Features Row */}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                      <span style={{ background: '#f0fdf4', color: '#16a34a', borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
+                        🧑 {v.capacity} Yolcu
+                      </span>
+                      {v.luggage != null && (
+                        <span style={{ background: '#fff7ed', color: '#ea580c', borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
+                          🧳 {v.luggage} Bagaj
+                        </span>
+                      )}
+                      {v.hasWifi && (
+                        <span style={{ background: '#eff6ff', color: '#2563eb', borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
+                          📡 WiFi
+                        </span>
+                      )}
+                      {v.hasBabySeat && (
+                        <span style={{ background: '#fdf4ff', color: '#9333ea', borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
+                          👶 Bebek
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Type name */}
+                    {(v as any).vehicleTypeDetails?.name && (
+                      <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 8 }}>
+                        {(v as any).vehicleTypeDetails.name}
+                      </Text>
+                    )}
+
+                    {/* Usage Type inline dropdown */}
+                    <Select
+                      size="small"
+                      value={v.usageType || 'TRANSFER'}
+                      style={{ width: '100%', marginBottom: 10 }}
+                      onChange={async (newType) => {
+                        try {
+                          await apiClient.put(`/api/vehicles/${v.id}`, {
+                            ...v,
+                            usageType: newType,
+                            shuttleMode: newType === 'SHUTTLE' ? (v.shuttleMode || 'FLEXIBLE') : null,
+                          });
+                          message.success('Güncellendi');
+                          fetchVehicles();
+                        } catch { message.error('Güncelleme başarısız'); }
+                      }}
+                      options={[
+                        { value: 'TRANSFER', label: '🚗 Özel Transfer' },
+                        { value: 'SHUTTLE', label: '🚌 Shuttle' },
+                        { value: 'TOUR', label: '🗯️ Tur' },
+                      ]}
+                    />
+
+                    {/* Assigned Driver Badge */}
+                    {(v as any).driverId && (() => {
+                      const assignedDriver = drivers.find((d: any) =>
+                        (d.user?.id || d.id) === (v as any).driverId ||
+                        d.id === (v as any).driverId
+                      );
+                      return assignedDriver ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, padding: '4px 8px', background: '#f0fdf4', borderRadius: 6 }}>
+                          <Avatar size={20} src={assignedDriver.photo} icon={<UserOutlined />} style={{ background: '#16a34a' }} />
+                          <Text style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>
+                            🚗 {assignedDriver.firstName} {assignedDriver.lastName}
+                          </Text>
+                        </div>
+                      ) : null;
+                    })()}
+
+                    {/* Action Buttons */}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <Button
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => handleEditVehicle(v)}
+                        style={{ flex: 1, borderRadius: 6, minWidth: 80 }}
+                      >
+                        Düzenle
+                      </Button>
+                      <Tooltip title="Bu araca bir şöför ata">
+                        <Button
+                          size="small"
+                          icon={<UserOutlined />}
+                          onClick={() => {
+                            setSelectedVehicleForDriver(v);
+                            setDriverSearch('');
+                            setDriverModalVisible(true);
+                          }}
+                          style={{
+                            flex: 1,
+                            borderRadius: 6,
+                            minWidth: 80,
+                            background: (v as any).driverId ? '#f0fdf4' : '#faf5ff',
+                            borderColor: (v as any).driverId ? '#16a34a' : '#9333ea',
+                            color: (v as any).driverId ? '#16a34a' : '#9333ea',
+                            fontWeight: 600,
+                          }}
+                        >
+                          Şöför Ata
+                        </Button>
+                      </Tooltip>
+                      <Switch
+                        size="small"
+                        checked={v.isActive}
+                        checkedChildren="Aktif"
+                        unCheckedChildren="Pasif"
+                        onChange={(checked) => handleToggleActive(v, checked)}
+                      />
+                    </div>
+                  </div>
+                </Card>
+              </Col>
+            );
+          })}
         </Row>
+
+        {/* Driver Assignment Modal */}
+        <Modal
+          open={driverModalVisible}
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <UserOutlined style={{ color: '#9333ea' }} />
+              <span>Şöför Ata{selectedVehicleForDriver ? ` — ${selectedVehicleForDriver.plateNumber}` : ''}</span>
+            </div>
+          }
+          onCancel={() => setDriverModalVisible(false)}
+          footer={null}
+          width={520}
+        >
+          <Input
+            prefix={<SearchOutlined />}
+            placeholder="Şöför ara..."
+            value={driverSearch}
+            onChange={(e) => setDriverSearch(e.target.value)}
+            style={{ marginBottom: 12 }}
+            allowClear
+          />
+          {selectedVehicleForDriver && (selectedVehicleForDriver as any).driverId && (
+            <Button
+              danger
+              size="small"
+              style={{ marginBottom: 12 }}
+              onClick={() => handleAssignDriver(selectedVehicleForDriver!.id, null)}
+              loading={driverLoading}
+            >
+              Şöför Atamasını Kaldır
+            </Button>
+          )}
+          <List
+            loading={driverLoading}
+            dataSource={drivers.filter((d: any) => {
+              const q = driverSearch.toLowerCase();
+              return !q || `${d.firstName} ${d.lastName}`.toLowerCase().includes(q) || (d.phone || '').includes(q);
+            })}
+            locale={{ emptyText: 'Şöför bulunamadı. Personel listesinde görev "Şöför" olan birini ekleyin.' }}
+            renderItem={(d: any) => {
+              const driverId = d.user?.id || d.id;
+              const isCurrentDriver = selectedVehicleForDriver && (selectedVehicleForDriver as any).driverId === driverId;
+              // Find if driver is assigned to another vehicle
+              const otherVehicle = !isCurrentDriver && vehicles.find((veh: any) => veh.driverId === driverId);
+              return (
+                <List.Item
+                  key={d.id}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    marginBottom: 6,
+                    background: isCurrentDriver ? '#f0fdf4' : '#fafafa',
+                    border: isCurrentDriver ? '1px solid #86efac' : '1px solid #f0f0f0',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  actions={[
+                    <Button
+                      key="assign"
+                      type={isCurrentDriver ? 'default' : 'primary'}
+                      size="small"
+                      loading={driverLoading}
+                      onClick={() => handleAssignDriver(selectedVehicleForDriver!.id, driverId)}
+                      style={{
+                        background: isCurrentDriver ? undefined : 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
+                        border: 'none',
+                        color: isCurrentDriver ? undefined : 'white',
+                      }}
+                    >
+                      {isCurrentDriver ? '✓ Atandı' : 'Ata'}
+                    </Button>
+                  ]}
+                >
+                  <List.Item.Meta
+                    avatar={
+                      <Avatar
+                        src={d.photo}
+                        icon={<UserOutlined />}
+                        style={{ background: isCurrentDriver ? '#16a34a' : '#9333ea' }}
+                      />
+                    }
+                    title={
+                      <span style={{ fontWeight: 600 }}>
+                        {d.firstName} {d.lastName}
+                        {isCurrentDriver && <span style={{ color: '#16a34a', marginLeft: 6, fontSize: 11 }}>● Atanmış</span>}
+                      </span>
+                    }
+                    description={
+                      <div style={{ fontSize: 11, color: '#6b7280' }}>
+                        {d.phone && <span>📞 {d.phone} </span>}
+                        {otherVehicle && (
+                          <span style={{ color: '#f59e0b' }}>
+                            <CarOutlined /> {(otherVehicle as any).plateNumber} aracında atanmış
+                          </span>
+                        )}
+                      </div>
+                    }
+                  />
+                </List.Item>
+              );
+            }}
+          />
+        </Modal>
 
         <Modal
           open={modalVisible}

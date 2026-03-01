@@ -28,9 +28,10 @@ const { Title, Text } = Typography;
 interface AdminLayoutProps {
   children: React.ReactNode;
   selectedKey?: string;
+  fullWidth?: boolean;
 }
 
-const AdminLayout: React.FC<AdminLayoutProps> = ({ children, selectedKey = 'dashboard' }) => {
+const AdminLayout: React.FC<AdminLayoutProps> = ({ children, selectedKey = 'dashboard', fullWidth = false }) => {
   const [collapsed, setCollapsed] = useState(false);
   const router = useRouter();
   const { user, logout } = useAuth();
@@ -60,7 +61,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, selectedKey = 'dash
         <Menu
           theme="dark"
           mode="inline"
-          defaultOpenKeys={['vehicles']}
+          defaultOpenKeys={['vehicles', 'vehicle-tracking-group']}
           selectedKeys={[selectedKey]}
           items={[
             {
@@ -134,6 +135,16 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, selectedKey = 'dash
                   key: 'accounting-invoices',
                   label: 'Kesilecek Faturalar',
                   onClick: () => router.push('/admin/accounting/invoices')
+                },
+                {
+                  key: 'agency-deposits',
+                  label: 'Acente Depozitoları',
+                  onClick: () => router.push('/admin/agencies/deposits')
+                },
+                {
+                  key: 'payroll',
+                  label: 'Personel Hakediş & Maaş',
+                  onClick: () => router.push('/admin/accounting/payroll')
                 }
               ]
             },
@@ -196,6 +207,38 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, selectedKey = 'dash
                   label: 'Ekstra Hizmetler',
                   onClick: () => router.push('/admin/extra-services')
                 }
+              ]
+            },
+            {
+              key: 'vehicle-tracking-group',
+              icon: <BarChartOutlined />,
+              label: 'Araç Takip',
+              children: [
+                {
+                  key: 'vehicle-tracking-dashboard',
+                  label: 'Genel Durum',
+                  onClick: () => router.push('/admin/vehicle-tracking')
+                },
+                {
+                  key: 'vehicle-tracking-insurance',
+                  label: 'Sigorta Takibi',
+                  onClick: () => router.push('/admin/vehicle-tracking/insurance')
+                },
+                {
+                  key: 'vehicle-tracking-fuel',
+                  label: 'Yakıt Giderleri',
+                  onClick: () => router.push('/admin/vehicle-tracking/fuel')
+                },
+                {
+                  key: 'vehicle-tracking-inspection',
+                  label: 'Araç Muayene',
+                  onClick: () => router.push('/admin/vehicle-tracking/inspection')
+                },
+                {
+                  key: 'vehicle-tracking-maintenance',
+                  label: 'Bakım & Onarım',
+                  onClick: () => router.push('/admin/vehicle-tracking/maintenance')
+                },
               ]
             },
             {
@@ -277,7 +320,10 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, selectedKey = 'dash
         </Header>
 
         {/* Content */}
-        <Content style={{ margin: '24px 16px', padding: 24, background: '#fff' }}>
+        <Content style={fullWidth
+          ? { minHeight: 'calc(100vh - 64px)', background: '#f5f5f5', overflow: 'hidden' }
+          : { margin: '24px 16px', padding: 24, background: '#fff' }
+        }>
           {children}
         </Content>
       </Layout>
