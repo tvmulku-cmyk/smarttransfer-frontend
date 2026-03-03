@@ -137,6 +137,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, selectedKey = 'dash
                   onClick: () => router.push('/admin/accounting/invoices')
                 },
                 {
+                  key: 'kasa',
+                  label: '💵 Kasa',
+                  onClick: () => router.push('/admin/accounting/kasa')
+                },
+                {
                   key: 'agency-deposits',
                   label: 'Acente Depozitoları',
                   onClick: () => router.push('/admin/agencies/deposits')
