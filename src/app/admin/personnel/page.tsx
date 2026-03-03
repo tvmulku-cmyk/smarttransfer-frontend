@@ -14,8 +14,8 @@ import {
 } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '../AdminLayout';
-import { getImageUrl } from '../../../lib/api-client';
-import dayjs from 'dayjs';
+import AdminGuard from '../AdminGuard';
+import apiClient, { getImageUrl } from '@/lib/api-client';
 import dayjs from 'dayjs';
 import 'dayjs/locale/tr';
 dayjs.locale('tr');
