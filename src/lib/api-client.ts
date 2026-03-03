@@ -16,6 +16,17 @@ const apiClient = axios.create({
     },
 });
 
+export const getImageUrl = (url?: string | null) => {
+    if (!url) return undefined;
+    if (url.startsWith('http://localhost:4000')) {
+        return url.replace('http://localhost:4000', API_URL);
+    }
+    if (url.startsWith('/uploads')) {
+        return `${API_URL}${url}`;
+    }
+    return url;
+};
+
 // Add auth token to requests
 apiClient.interceptors.request.use((config) => {
     // Log for debugging

@@ -14,7 +14,7 @@ import {
 } from '@ant-design/icons';
 import AdminLayout from '../../AdminLayout';
 import AdminGuard from '../../AdminGuard';
-import apiClient from '@/lib/api-client';
+import apiClient, { getImageUrl } from '@/lib/api-client';
 import dayjs from 'dayjs';
 import 'dayjs/locale/tr';
 dayjs.locale('tr');
@@ -213,7 +213,7 @@ export default function PayrollPage() {
             render: (_: any, p: PersonnelPayroll) => (
                 <Space>
                     <Avatar
-                        src={p.photo || undefined}
+                        src={getImageUrl(p.photo)}
                         style={{ background: '#6366f1' }}
                         icon={<UserOutlined />}
                         size={36}

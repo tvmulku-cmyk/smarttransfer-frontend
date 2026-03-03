@@ -10,12 +10,12 @@ import {
     PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined,
     PhoneOutlined, MailOutlined, StopOutlined, CalendarOutlined,
     FileTextOutlined, ClockCircleOutlined, CheckCircleOutlined,
-    ExclamationCircleOutlined
+    ExclamationCircleOutlined, SettingOutlined
 } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
-import apiClient from '../../../lib/api-client';
-import AdminGuard from '../AdminGuard';
 import AdminLayout from '../AdminLayout';
+import { getImageUrl } from '../../../lib/api-client';
+import dayjs from 'dayjs';
 import dayjs from 'dayjs';
 import 'dayjs/locale/tr';
 dayjs.locale('tr');
@@ -81,13 +81,28 @@ const PersonnelListPage = () => {
     // Leave history drawer
     const [leaveDrawer, setLeaveDrawer] = useState(false);
 
+    // Settings modal
+    const [settingsModal, setSettingsModal] = useState(false);
+    const [settingsForm] = Form.useForm();
+    const [savingSettings, setSavingSettings] = useState(false);
+
     const fetchData = async () => {
         setLoading(true);
         try {
-            const response = await apiClient.get('/api/personnel');
-            if (response.data.success) setData(response.data.data);
+            const [personnelRes, tenantRes] = await Promise.all([
+                apiClient.get('/api/personnel'),
+                apiClient.get('/api/tenant/info')
+            ]);
+
+            if (personnelRes.data.success) setData(personnelRes.data.data);
+
+            if (tenantRes.data.success && tenantRes.data.data.tenant.settings) {
+                settingsForm.setFieldsValue({
+                    salaryPaymentDay: tenantRes.data.data.tenant.settings.salaryPaymentDay || 1
+                });
+            }
         } catch {
-            message.error('Personel listesi yüklenemedi');
+            message.error('Veriler yüklenemedi');
         } finally {
             setLoading(false);
         }
@@ -207,6 +222,29 @@ const PersonnelListPage = () => {
         setLeaveDrawer(true);
     };
 
+    // ── Settings ──────────────────────────────────────────
+    const handleSaveSettings = async () => {
+        try {
+            const vals = await settingsForm.validateFields();
+            setSavingSettings(true);
+
+            const tenantRes = await apiClient.get('/api/tenant/info');
+            const currentSettings = tenantRes.data.data.tenant.settings || {};
+
+            await apiClient.put('/api/tenant/settings', {
+                ...currentSettings,
+                salaryPaymentDay: vals.salaryPaymentDay
+            });
+
+            message.success('Ayarlar kaydedildi');
+            setSettingsModal(false);
+        } catch (e: any) {
+            if (!e.errorFields) message.error('Ayarlar kaydedilemedi');
+        } finally {
+            setSavingSettings(false);
+        }
+    };
+
     // ── Status tag helper ────────────────────────────────
     const statusTag = (p: Personnel) => {
         if (!p.isActive) {
@@ -225,7 +263,7 @@ const PersonnelListPage = () => {
             key: 'personnel',
             render: (_: any, r: Personnel) => (
                 <Space>
-                    <Avatar src={r.photo} icon={<UserOutlined />} size="large" style={{ background: '#6366f1' }} />
+                    <Avatar src={getImageUrl(r.photo)} icon={<UserOutlined />} size="large" style={{ background: '#6366f1' }} />
                     <div>
                         <div style={{ fontWeight: 600 }}>{r.firstName} {r.lastName}</div>
                         <div style={{ fontSize: 11, color: '#888' }}>{r.tcNumber}</div>
@@ -308,9 +346,14 @@ const PersonnelListPage = () => {
                 <Card
                     title="Personel Listesi"
                     extra={
-                        <Button type="primary" icon={<PlusOutlined />} onClick={() => router.push('/admin/personnel/create')}>
-                            Yeni Personel Ekle
-                        </Button>
+                        <Space>
+                            <Button icon={<SettingOutlined />} onClick={() => setSettingsModal(true)}>
+                                Ayarlar
+                            </Button>
+                            <Button type="primary" icon={<PlusOutlined />} onClick={() => router.push('/admin/personnel/create')}>
+                                Yeni Personel Ekle
+                            </Button>
+                        </Space>
                     }
                 >
                     <Table columns={columns} dataSource={data} rowKey="id" loading={loading} pagination={{ pageSize: 10 }}
@@ -437,6 +480,33 @@ const PersonnelListPage = () => {
                         );
                     })()}
                 </Drawer>
+
+                {/* ── Ayarlar Modal ── */}
+                <Modal
+                    title={<span><SettingOutlined style={{ marginRight: 8 }} />Personel ve Maaş Ayarları</span>}
+                    open={settingsModal}
+                    onOk={handleSaveSettings}
+                    onCancel={() => setSettingsModal(false)}
+                    confirmLoading={savingSettings}
+                    okText="Kaydet"
+                    cancelText="Vazgeç"
+                >
+                    <Form form={settingsForm} layout="vertical">
+                        <Form.Item
+                            name="salaryPaymentDay"
+                            label="Otomatik Maaş Hak Ediş Günü"
+                            rules={[{ required: true, message: 'Ödeme günü zorunludur' }]}
+                            tooltip="Belirtilen günde tüm aktif personelin maaş hak edişleri hesaplarına (kıst hesaplaması dahil) otomatik yansıtılır."
+                        >
+                            <Select placeholder="Gün seçin">
+                                {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
+                                    <Option key={day} value={day}>Her ayın {day}. günü</Option>
+                                ))}
+                            </Select>
+                        </Form.Item>
+                    </Form>
+                </Modal>
+
             </AdminLayout>
         </AdminGuard>
     );

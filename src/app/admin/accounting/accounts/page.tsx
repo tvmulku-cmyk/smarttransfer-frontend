@@ -14,6 +14,9 @@ import {
     PhoneOutlined, MailOutlined, FilterOutlined, FileTextOutlined,
     DownOutlined, ArrowRightOutlined, ShoppingCartOutlined,
     ShoppingOutlined, BarChartOutlined, MenuOutlined,
+    DollarOutlined, GiftOutlined, ScissorOutlined, TrophyOutlined,
+    CalendarOutlined, CheckCircleOutlined, CloseCircleOutlined,
+    InfoCircleOutlined, CreditCardOutlined,
 } from '@ant-design/icons';
 import AdminLayout from '../../AdminLayout';
 import AdminGuard from '../../AdminGuard';
@@ -79,6 +82,13 @@ const AccountsPage: React.FC = () => {
     const [txSubmitting, setTxSubmitting] = useState(false);
     const [stmtVisible, setStmtVisible] = useState(false);
     const [stmtAccount, setStmtAccount] = useState<Account | null>(null);
+
+    // Personnel-specific transaction states
+    const [personnelTxVisible, setPersonnelTxVisible] = useState(false);
+    const [personnelTxType, setPersonnelTxType] = useState<string>('SALARY');
+    const [personnelTxAccount, setPersonnelTxAccount] = useState<Account | null>(null);
+    const [personnelTxForm] = Form.useForm();
+    const [personnelTxSubmitting, setPersonnelTxSubmitting] = useState(false);
 
     const fetchAccounts = async () => {
         setLoading(true);
@@ -154,6 +164,68 @@ const AccountsPage: React.FC = () => {
         setTxModalVisible(true);
     };
 
+    // ---- Personnel transaction openner ----
+    const openPersonnelTx = (record: Account, opType: string) => {
+        if (opType === 'STATEMENT') {
+            router.push(`/admin/accounting/accounts/${record.id}/statement`);
+            return;
+        }
+        setPersonnelTxAccount(record);
+        setPersonnelTxType(opType);
+        personnelTxForm.resetFields();
+        setPersonnelTxVisible(true);
+    };
+
+    // ---- Personnel transaction submit ----
+    const handlePersonnelTxOk = async () => {
+        try {
+            const values = await personnelTxForm.validateFields();
+            setPersonnelTxSubmitting(true);
+            const acct = personnelTxAccount!;
+
+            // Extract raw personnel ID (strip 'personnel-' prefix)
+            const rawId = acct.id.startsWith('personnel-') ? acct.id.replace('personnel-', '') : acct.id;
+            const period = values.period ? `${values.period[0]?.format('MM.YYYY')} - ${values.period[1]?.format('MM.YYYY')}` : '';
+            const note = values.description || '';
+
+            if (personnelTxType === 'SALARY') {
+                await apiClient.post('/api/accounting/payroll/salary', {
+                    personnelId: rawId,
+                    amount: values.amount,
+                    note,
+                    period,
+                    date: values.date ? values.date.toISOString() : new Date().toISOString(),
+                });
+            } else if (personnelTxType === 'ADVANCE') {
+                await apiClient.post('/api/accounting/payroll/advance', {
+                    personnelId: rawId,
+                    amount: values.amount,
+                    note,
+                    date: values.date ? values.date.toISOString() : new Date().toISOString(),
+                });
+            } else {
+                // HAKEDIS, PRIM, KESINTI -> generic transaction
+                const isCredit = personnelTxType === 'KESINTI'; // Kesinti = bizim lehimize (credit)
+                await apiClient.post('/api/accounting/transactions', {
+                    accountId: acct.id,
+                    type: isCredit ? 'MANUAL_IN' : 'MANUAL_OUT',
+                    amount: values.amount,
+                    description: `${PERSONNEL_TX_CONFIG[personnelTxType]?.label || personnelTxType}${note ? ': ' + note : ''}${period ? ' — ' + period : ''}`,
+                    date: values.date ? values.date.toISOString() : new Date().toISOString(),
+                    isCredit,
+                });
+            }
+
+            message.success(`${PERSONNEL_TX_CONFIG[personnelTxType]?.label || 'İşlem'} başarıyla kaydedildi`);
+            setPersonnelTxVisible(false);
+            fetchAccounts();
+        } catch (error: any) {
+            if (!error?.errorFields) message.error(error?.response?.data?.error || 'İşlem kaydedilemedi');
+        } finally {
+            setPersonnelTxSubmitting(false);
+        }
+    };
+
     const handleTransactionOk = async () => {
         try {
             const values = await txForm.validateFields();
@@ -175,62 +247,127 @@ const AccountsPage: React.FC = () => {
         } finally { setTxSubmitting(false); }
     };
 
-    const buildMenu = (record: Account): MenuProps => ({
+    // ---- Personnel tx config ----
+    const PERSONNEL_TX_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode; desc: string; isOut: boolean }> = {
+        SALARY: { label: 'Maaş Ödemesi', color: '#2563eb', icon: <DollarOutlined />, desc: 'Aylık maaş ödemesini kayıt altına alır.', isOut: true },
+        HAKEDIS: { label: 'Hakediş Ödemesi', color: '#7c3aed', icon: <TrophyOutlined />, desc: 'Proje veya hizmet hakediş ödemesini kayıt eder.', isOut: true },
+        ADVANCE: { label: 'Avans', color: '#d97706', icon: <CreditCardOutlined />, desc: 'Personele avans ödemesi yapar.', isOut: true },
+        PRIM: { label: 'Prim / Bonus', color: '#059669', icon: <GiftOutlined />, desc: 'Performans veya satış primini kayıt eder.', isOut: true },
+        KESINTI: { label: 'Maaş Kesintisi', color: '#dc2626', icon: <ScissorOutlined />, desc: 'Maaştan yapılacak kesinti miktarını kayıt eder.', isOut: false },
+    };
+
+    // ---- Personnel menu builder ----
+    const buildPersonnelMenu = (record: Account): MenuProps => ({
         items: [
             {
-                key: 'DEBIT_IN',
-                icon: <ArrowRightOutlined style={{ color: '#16a34a' }} />,
-                label: <span style={{ color: '#16a34a', fontWeight: 600 }}>Cari Giris</span>,
-                onClick: () => openTransaction(record, 'DEBIT_IN'),
-            },
-            {
-                key: 'CREDIT_OUT',
-                icon: <ArrowDownOutlined style={{ color: '#dc2626' }} />,
-                label: <span style={{ color: '#dc2626', fontWeight: 600 }}>Cari Cikis</span>,
-                onClick: () => openTransaction(record, 'CREDIT_OUT'),
+                key: 'header',
+                label: <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 700, letterSpacing: '0.5px' }}>👷 PERSONEL İŞLEMLERİ</span>,
+                disabled: true,
             },
             { type: 'divider' },
             {
-                key: 'PURCHASE_INVOICE',
-                icon: <ShoppingCartOutlined style={{ color: '#2563eb' }} />,
-                label: <span style={{ color: '#2563eb', fontWeight: 600 }}>Alış Faturası</span>,
-                onClick: () => {
-                    const params = new URLSearchParams({
-                        tab: 'PURCHASE',
-                        name: record.name,
-                        taxNo: record.taxNumber || '',
-                        taxOffice: record.taxOffice || '',
-                        phone: record.phone || '',
-                        email: record.email || '',
-                    });
-                    router.push(`/admin/accounting/invoices?${params.toString()}`);
-                },
+                key: 'SALARY',
+                icon: <DollarOutlined style={{ color: '#2563eb' }} />,
+                label: <span style={{ color: '#2563eb', fontWeight: 600 }}>Maaş Ödemesi</span>,
+                onClick: () => openPersonnelTx(record, 'SALARY'),
             },
             {
-                key: 'SALES_INVOICE',
-                icon: <ShoppingOutlined style={{ color: '#7c3aed' }} />,
-                label: <span style={{ color: '#7c3aed', fontWeight: 600 }}>Satış Faturası</span>,
-                onClick: () => {
-                    const params = new URLSearchParams({
-                        tab: 'SALES',
-                        name: record.name,
-                        taxNo: record.taxNumber || '',
-                        taxOffice: record.taxOffice || '',
-                        phone: record.phone || '',
-                        email: record.email || '',
-                    });
-                    router.push(`/admin/accounting/invoices?${params.toString()}`);
-                },
+                key: 'HAKEDIS',
+                icon: <TrophyOutlined style={{ color: '#7c3aed' }} />,
+                label: <span style={{ color: '#7c3aed', fontWeight: 600 }}>Hakediş Ödemesi</span>,
+                onClick: () => openPersonnelTx(record, 'HAKEDIS'),
+            },
+            {
+                key: 'ADVANCE',
+                icon: <CreditCardOutlined style={{ color: '#d97706' }} />,
+                label: <span style={{ color: '#d97706', fontWeight: 600 }}>Avans</span>,
+                onClick: () => openPersonnelTx(record, 'ADVANCE'),
+            },
+            {
+                key: 'PRIM',
+                icon: <GiftOutlined style={{ color: '#059669' }} />,
+                label: <span style={{ color: '#059669', fontWeight: 600 }}>Prim / Bonus</span>,
+                onClick: () => openPersonnelTx(record, 'PRIM'),
+            },
+            {
+                key: 'KESINTI',
+                icon: <ScissorOutlined style={{ color: '#dc2626' }} />,
+                label: <span style={{ color: '#dc2626', fontWeight: 600 }}>Maaş Kesintisi</span>,
+                onClick: () => openPersonnelTx(record, 'KESINTI'),
             },
             { type: 'divider' },
             {
                 key: 'STATEMENT',
                 icon: <BarChartOutlined style={{ color: '#0891b2' }} />,
-                label: 'Hesap Ekstresi',
-                onClick: () => openTransaction(record, 'STATEMENT'),
+                label: <span style={{ color: '#0891b2', fontWeight: 600 }}>Hesap Ekstresi</span>,
+                onClick: () => openPersonnelTx(record, 'STATEMENT'),
             },
         ],
     });
+
+    const buildMenu = (record: Account): MenuProps => {
+        // Personnel accounts get their own specialized menu
+        if (record.type === 'PERSONNEL' || record.source === 'PERSONNEL') {
+            return buildPersonnelMenu(record);
+        }
+        // All other account types use the standard menu
+        return {
+            items: [
+                {
+                    key: 'DEBIT_IN',
+                    icon: <ArrowRightOutlined style={{ color: '#16a34a' }} />,
+                    label: <span style={{ color: '#16a34a', fontWeight: 600 }}>Cari Giris</span>,
+                    onClick: () => openTransaction(record, 'DEBIT_IN'),
+                },
+                {
+                    key: 'CREDIT_OUT',
+                    icon: <ArrowDownOutlined style={{ color: '#dc2626' }} />,
+                    label: <span style={{ color: '#dc2626', fontWeight: 600 }}>Cari Cikis</span>,
+                    onClick: () => openTransaction(record, 'CREDIT_OUT'),
+                },
+                { type: 'divider' },
+                {
+                    key: 'PURCHASE_INVOICE',
+                    icon: <ShoppingCartOutlined style={{ color: '#2563eb' }} />,
+                    label: <span style={{ color: '#2563eb', fontWeight: 600 }}>Alış Faturası</span>,
+                    onClick: () => {
+                        const params = new URLSearchParams({
+                            tab: 'PURCHASE',
+                            name: record.name,
+                            taxNo: record.taxNumber || '',
+                            taxOffice: record.taxOffice || '',
+                            phone: record.phone || '',
+                            email: record.email || '',
+                        });
+                        router.push(`/admin/accounting/invoices?${params.toString()}`);
+                    },
+                },
+                {
+                    key: 'SALES_INVOICE',
+                    icon: <ShoppingOutlined style={{ color: '#7c3aed' }} />,
+                    label: <span style={{ color: '#7c3aed', fontWeight: 600 }}>Satış Faturası</span>,
+                    onClick: () => {
+                        const params = new URLSearchParams({
+                            tab: 'SALES',
+                            name: record.name,
+                            taxNo: record.taxNumber || '',
+                            taxOffice: record.taxOffice || '',
+                            phone: record.phone || '',
+                            email: record.email || '',
+                        });
+                        router.push(`/admin/accounting/invoices?${params.toString()}`);
+                    },
+                },
+                { type: 'divider' },
+                {
+                    key: 'STATEMENT',
+                    icon: <BarChartOutlined style={{ color: '#0891b2' }} />,
+                    label: 'Hesap Ekstresi',
+                    onClick: () => router.push(`/admin/accounting/accounts/${record.id}/statement`),
+                },
+            ],
+        };
+    };
 
     const fmtCurrency = (val: number, currency = 'TRY') =>
         Number(val || 0).toLocaleString('tr-TR', { style: 'currency', currency });
@@ -848,6 +985,173 @@ const AccountsPage: React.FC = () => {
                         </>
                     )}
                 </Modal>
+
+                {/* ====== PERSONEL İŞLEM MODAL ====== */}
+                {personnelTxAccount && (
+                    <Modal
+                        title={
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{
+                                    width: 40, height: 40, borderRadius: 10,
+                                    background: `linear-gradient(135deg, ${PERSONNEL_TX_CONFIG[personnelTxType]?.color || '#6366f1'} 0%, ${PERSONNEL_TX_CONFIG[personnelTxType]?.color || '#6366f1'}99 100%)`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: 'white', fontSize: 18,
+                                }}>
+                                    {PERSONNEL_TX_CONFIG[personnelTxType]?.icon}
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: 15 }}>{PERSONNEL_TX_CONFIG[personnelTxType]?.label}</div>
+                                    <div style={{ fontSize: 12, color: '#6b7280', fontWeight: 400 }}>Personel İşlemi</div>
+                                </div>
+                            </div>
+                        }
+                        open={personnelTxVisible}
+                        onOk={handlePersonnelTxOk}
+                        onCancel={() => setPersonnelTxVisible(false)}
+                        confirmLoading={personnelTxSubmitting}
+                        okText="Kaydet"
+                        cancelText="İptal"
+                        width={520}
+                        okButtonProps={{
+                            style: {
+                                background: `linear-gradient(135deg, ${PERSONNEL_TX_CONFIG[personnelTxType]?.color || '#6366f1'} 0%, ${PERSONNEL_TX_CONFIG[personnelTxType]?.color || '#6366f1'}cc 100%)`,
+                                border: 'none', fontWeight: 600
+                            },
+                            icon: <CheckCircleOutlined />
+                        }}
+                        cancelButtonProps={{ icon: <CloseCircleOutlined /> }}
+                    >
+                        {/* Personel kimlik kartı */}
+                        <div style={{
+                            background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+                            border: '1px solid #fde68a',
+                            borderRadius: 12,
+                            padding: '14px 16px',
+                            marginBottom: 20,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 14,
+                        }}>
+                            <div style={{
+                                width: 46, height: 46, borderRadius: '50%',
+                                background: 'linear-gradient(135deg, #d97706, #f59e0b)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: 'white', fontSize: 20, fontWeight: 700, flexShrink: 0,
+                            }}>
+                                {personnelTxAccount.name?.charAt(0).toUpperCase()}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 700, color: '#92400e', fontSize: 15 }}>{personnelTxAccount.name}</div>
+                                <div style={{ fontSize: 12, color: '#b45309', marginTop: 2 }}>
+                                    {personnelTxAccount.jobTitle && <span>{personnelTxAccount.jobTitle} · </span>}
+                                    {personnelTxAccount.code}
+                                </div>
+                                {personnelTxAccount.monthlySalary && personnelTxAccount.monthlySalary > 0 && (
+                                    <div style={{ fontSize: 11, color: '#d97706', marginTop: 3, fontWeight: 600 }}>
+                                        <DollarOutlined style={{ marginRight: 4 }} />
+                                        Aylık Maaş: {fmtCurrency(personnelTxAccount.monthlySalary, personnelTxAccount.currency)}
+                                    </div>
+                                )}
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: 10, color: '#b45309', marginBottom: 2, fontWeight: 600, letterSpacing: '0.5px' }}>GÜNCEL BAKİYE</div>
+                                <div style={{
+                                    fontSize: 16, fontWeight: 800, fontFamily: 'monospace',
+                                    color: Number(personnelTxAccount.balance) < 0 ? '#059669' : Number(personnelTxAccount.balance) > 0 ? '#dc2626' : '#6b7280',
+                                }}>
+                                    {fmtCurrency(Math.abs(Number(personnelTxAccount.balance)), personnelTxAccount.currency)}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* İşlem açıklama banner */}
+                        <div style={{
+                            background: `${PERSONNEL_TX_CONFIG[personnelTxType]?.color || '#6366f1'}11`,
+                            border: `1px solid ${PERSONNEL_TX_CONFIG[personnelTxType]?.color || '#6366f1'}33`,
+                            borderRadius: 8, padding: '8px 12px', marginBottom: 20,
+                            display: 'flex', gap: 8, alignItems: 'center', fontSize: 12,
+                            color: PERSONNEL_TX_CONFIG[personnelTxType]?.color || '#6366f1',
+                        }}>
+                            <InfoCircleOutlined />
+                            {PERSONNEL_TX_CONFIG[personnelTxType]?.desc}
+                        </div>
+
+                        <Form form={personnelTxForm} layout="vertical">
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item
+                                        name="amount"
+                                        label={<span style={{ fontWeight: 600 }}>Tutar (₺)</span>}
+                                        rules={[
+                                            { required: true, message: 'Tutar zorunludur' },
+                                            { type: 'number', min: 0.01, message: "0'dan büyük olmalıdır" }
+                                        ]}
+                                    >
+                                        <InputNumber
+                                            style={{ width: '100%' }}
+                                            placeholder="0,00"
+                                            precision={2}
+                                            min={0.01}
+                                            addonAfter={personnelTxAccount.currency || 'TRY'}
+                                            formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                                            parser={(v: any) => v!.replace(/,/g, '')}
+                                        />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item
+                                        name="date"
+                                        label={<span style={{ fontWeight: 600 }}>İşlem Tarihi</span>}
+                                    >
+                                        <DatePicker
+                                            style={{ width: '100%' }}
+                                            format="DD.MM.YYYY"
+                                            placeholder="Bugün"
+                                            suffixIcon={<CalendarOutlined />}
+                                        />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+
+                            {/* Dönem seçici — Maaş ve Hakediş için */}
+                            {(personnelTxType === 'SALARY' || personnelTxType === 'HAKEDIS') && (
+                                <Form.Item
+                                    name="period"
+                                    label={<span style={{ fontWeight: 600 }}>Dönem ({personnelTxType === 'SALARY' ? 'Maaş Dönemi' : 'Hakediş Dönemi'})</span>}
+                                >
+                                    <DatePicker.RangePicker
+                                        picker="month"
+                                        style={{ width: '100%' }}
+                                        format="MM.YYYY"
+                                        placeholder={['Başlangıç Ayı', 'Bitiş Ayı']}
+                                    />
+                                </Form.Item>
+                            )}
+
+                            <Form.Item
+                                name="description"
+                                label={<span style={{ fontWeight: 600 }}>Not / Açıklama</span>}
+                            >
+                                <Input.TextArea
+                                    rows={3}
+                                    placeholder={`${PERSONNEL_TX_CONFIG[personnelTxType]?.label || ''} ile ilgili notlar...`}
+                                />
+                            </Form.Item>
+
+                            {/* Uyarı notu — Kesinti için */}
+                            {personnelTxType === 'KESINTI' && (
+                                <div style={{
+                                    background: '#fef2f2', border: '1px solid #fca5a5',
+                                    borderRadius: 8, padding: '8px 12px',
+                                    fontSize: 12, color: '#dc2626', display: 'flex', gap: 8,
+                                }}>
+                                    <ScissorOutlined />
+                                    <span>Kesinti işlemi personel borcuna eklenir. Maaş hesabında bakiye düşümü yapılır.</span>
+                                </div>
+                            )}
+                        </Form>
+                    </Modal>
+                )}
 
             </AdminLayout>
         </AdminGuard>

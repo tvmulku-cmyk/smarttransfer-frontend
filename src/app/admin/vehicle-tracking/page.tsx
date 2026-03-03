@@ -13,7 +13,7 @@ import {
 } from '@ant-design/icons';
 import AdminLayout from '../AdminLayout';
 import AdminGuard from '../AdminGuard';
-import apiClient from '@/lib/api-client';
+import apiClient, { getImageUrl } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 
 const { Title, Text } = Typography;
@@ -165,7 +165,7 @@ const VehicleTrackingDashboard: React.FC = () => {
                 <Space>
                     <Avatar
                         size={38}
-                        src={r.imageUrl}
+                        src={getImageUrl(r.imageUrl)}
                         icon={<CarOutlined />}
                         style={{ background: r.isActive ? '#6366f1' : '#9ca3af' }}
                     />

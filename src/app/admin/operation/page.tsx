@@ -1,227 +1,816 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Table, Tag, Typography, Button, Space, message } from 'antd';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    DashboardOutlined,
-    CarOutlined,
-    TeamOutlined,
-    CheckCircleOutlined,
-    ClockCircleOutlined,
-    SyncOutlined,
-    ArrowRightOutlined
+    Row, Col, Card, Statistic, Table, Tag, Typography, Button, Space,
+    message, Avatar, Badge, Tooltip, Progress, Timeline, Drawer, Divider,
+    Empty, Spin
+} from 'antd';
+import {
+    CarOutlined, CheckCircleOutlined, ClockCircleOutlined, SyncOutlined,
+    TeamOutlined, EnvironmentOutlined, ThunderboltOutlined, StarOutlined,
+    ArrowRightOutlined, AlertOutlined, WifiOutlined, DashboardOutlined,
+    UserOutlined, PhoneOutlined, CalendarOutlined, EyeOutlined,
+    RiseOutlined, AimOutlined, CompassOutlined
 } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
-import apiClient from '@/lib/api-client';
+import apiClient, { getImageUrl } from '@/lib/api-client';
 import dayjs from 'dayjs';
+import 'dayjs/locale/tr';
+import relativeTime from 'dayjs/plugin/relativeTime';
 import AdminLayout from '../AdminLayout';
 import AdminGuard from '../AdminGuard';
+import { useSocket } from '@/app/context/SocketContext';
 
-const { Title } = Typography;
+dayjs.locale('tr');
+dayjs.extend(relativeTime);
+
+const { Text, Title } = Typography;
+
+interface Driver {
+    id: string;
+    fullName: string;
+    firstName: string;
+    lastName: string;
+    avatar?: string;
+    jobTitle?: string;
+    location?: { lat: number; lng: number; speed?: number } | null;
+    lastSeenAt?: string;
+    socketId?: string;
+}
+
+interface Booking {
+    id: string;
+    bookingNumber: string;
+    contactName: string;
+    contactPhone: string;
+    pickup: any;
+    dropoff: any;
+    pickupDateTime: string;
+    status: string;
+    operationalStatus?: string;
+    total: number;
+    currency: string;
+    vehicleType?: string;
+    driverId?: string;
+    assignedVehicleId?: string;
+    adults?: number;
+    flightNumber?: string;
+    agencyName?: string;
+}
 
 export default function OperationDashboard() {
     const router = useRouter();
+    const { socket } = useSocket();
+
     const [loading, setLoading] = useState(true);
-    const [stats, setStats] = useState({
-        total: 0,
-        pending: 0,
-        confirmed: 0,
-        completed: 0,
-        inPool: 0
-    });
-    const [recentBookings, setRecentBookings] = useState([]);
+    const [refreshing, setRefreshing] = useState(false);
+    const [lastUpdated, setLastUpdated] = useState(dayjs());
 
-    const fetchData = async () => {
-        setLoading(true);
+    const [stats, setStats] = useState({ total: 0, pending: 0, confirmed: 0, completed: 0, inPool: 0, todayCount: 0, inProgress: 0, cancelled: 0 });
+    const [upcomingBookings, setUpcomingBookings] = useState<Booking[]>([]);
+    const [activeBookings, setActiveBookings] = useState<Booking[]>([]);
+    const [allBookings, setAllBookings] = useState<Booking[]>([]);
+    const [drivers, setDrivers] = useState<Driver[]>([]);
+    const [onlineDriverIds, setOnlineDriverIds] = useState<Set<string>>(new Set());
+    const [driverLocations, setDriverLocations] = useState<Record<string, { lat: number; lng: number; speed?: number }>>({});
+
+    const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+    const [detailDrawer, setDetailDrawer] = useState(false);
+
+    // Map refs
+    const mapRef = useRef<google.maps.Map | null>(null);
+    const mapContainerRef = useRef<HTMLDivElement>(null);
+    const markersRef = useRef<Record<string, google.maps.Marker>>({});
+    const [mapReady, setMapReady] = useState(false);
+
+    const getStatusColor = (status: string) => {
+        const map: Record<string, string> = {
+            PENDING: '#f59e0b', CONFIRMED: '#6366f1', IN_PROGRESS: '#8b5cf6',
+            COMPLETED: '#10b981', CANCELLED: '#ef4444', IN_POOL: '#06b6d4'
+        };
+        return map[status] || '#6b7280';
+    };
+
+    const getStatusLabel = (status: string, opStatus?: string) => {
+        if (opStatus === 'IN_POOL') return 'Havuzda';
+        const map: Record<string, string> = {
+            PENDING: 'Bekliyor', CONFIRMED: 'Onaylı', IN_PROGRESS: 'Aktif Sefer',
+            COMPLETED: 'Tamamlandı', CANCELLED: 'İptal'
+        };
+        return map[status] || status;
+    };
+
+    const fetchAll = useCallback(async (silent = false) => {
+        if (!silent) setLoading(true);
+        else setRefreshing(true);
         try {
-            // Fetch all bookings to calculate stats (in a real app, use a dedicated stats endpoint)
-            const response = await apiClient.get('/api/transfer/bookings');
-            if (response.data.success) {
-                const bookings = response.data.data;
+            const [bookingsRes, driversRes] = await Promise.all([
+                apiClient.get('/api/transfer/bookings'),
+                apiClient.get('/api/driver/online')
+            ]);
 
-                // Calculate Stats
-                const stats = {
-                    total: bookings.length,
-                    pending: bookings.filter((b: any) => b.status === 'PENDING').length,
-                    confirmed: bookings.filter((b: any) => b.status === 'CONFIRMED').length,
-                    completed: bookings.filter((b: any) => b.status === 'COMPLETED').length,
-                    inPool: bookings.filter((b: any) => b.operationalStatus === 'IN_POOL').length
-                };
-                setStats(stats);
+            if (bookingsRes.data.success) {
+                const raw: Booking[] = bookingsRes.data.data;
+                const enriched = raw.map(b => ({
+                    ...b,
+                    pickup: typeof b.pickup === 'string' ? { location: b.pickup } : b.pickup,
+                    dropoff: typeof b.dropoff === 'string' ? { location: b.dropoff } : b.dropoff,
+                    pickupDateTime: b.pickupDateTime || (b as any).startDate,
+                }));
+                setAllBookings(enriched);
 
-                // Get pending/active bookings for the list
-                const active = bookings
-                    .filter((b: any) => ['PENDING', 'CONFIRMED'].includes(b.status))
-                    .sort((a: any, b: any) => new Date(a.pickupDateTime).getTime() - new Date(b.pickupDateTime).getTime())
-                    .slice(0, 5);
+                const today = dayjs().startOf('day');
+                const todayBks = enriched.filter(b => dayjs(b.pickupDateTime).isSame(today, 'day'));
 
-                setRecentBookings(active);
+                setStats({
+                    total: enriched.length,
+                    pending: enriched.filter(b => b.status === 'PENDING').length,
+                    confirmed: enriched.filter(b => b.status === 'CONFIRMED').length,
+                    inProgress: enriched.filter(b => b.status === 'IN_PROGRESS').length,
+                    completed: enriched.filter(b => b.status === 'COMPLETED').length,
+                    cancelled: enriched.filter(b => b.status === 'CANCELLED').length,
+                    inPool: enriched.filter(b => b.operationalStatus === 'IN_POOL').length,
+                    todayCount: todayBks.length,
+                });
+
+                // Upcoming: next 24h, active or pending
+                const now = dayjs();
+                const upcoming = enriched
+                    .filter(b => ['PENDING', 'CONFIRMED'].includes(b.status))
+                    .filter(b => dayjs(b.pickupDateTime).isAfter(now.subtract(2, 'hour')))
+                    .sort((a, b) => dayjs(a.pickupDateTime).valueOf() - dayjs(b.pickupDateTime).valueOf())
+                    .slice(0, 8);
+                setUpcomingBookings(upcoming);
+
+                // Active: IN_PROGRESS
+                const active = enriched.filter(b => b.status === 'IN_PROGRESS');
+                setActiveBookings(active);
             }
-        } catch (error) {
-            console.error('Dashboard fetch error:', error);
+
+            if (driversRes.data.success) {
+                const driverList: Driver[] = driversRes.data.data;
+                setDrivers(driverList);
+                const online = new Set<string>();
+                const locs: Record<string, { lat: number; lng: number; speed?: number }> = {};
+                driverList.forEach(d => {
+                    if (d.socketId || (d.lastSeenAt && dayjs().diff(dayjs(d.lastSeenAt), 'minute') < 5)) {
+                        online.add(d.id);
+                    }
+                    if (d.location) locs[d.id] = d.location;
+                });
+                setOnlineDriverIds(online);
+                setDriverLocations(locs);
+            }
+
+            setLastUpdated(dayjs());
+        } catch {
             message.error('Veriler yüklenemedi');
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
-    };
-
-    useEffect(() => {
-        fetchData();
     }, []);
 
-    const columns = [
+    useEffect(() => {
+        fetchAll();
+        const interval = setInterval(() => fetchAll(true), 30000);
+        return () => clearInterval(interval);
+    }, [fetchAll]);
+
+    // Socket listeners
+    useEffect(() => {
+        if (!socket) return;
+        const handleLocUpdate = (data: { driverId: string; lat: string; lng: string; speed?: string }) => {
+            const loc = { lat: parseFloat(data.lat as any), lng: parseFloat(data.lng as any), speed: data.speed ? parseFloat(data.speed as any) : undefined };
+            setDriverLocations(prev => ({ ...prev, [data.driverId]: loc }));
+            setOnlineDriverIds(prev => new Set([...prev, data.driverId]));
+        };
+        const handleStatusUpdate = (data: { bookingId: string; status: string }) => {
+            setAllBookings(prev => prev.map(b => b.id === data.bookingId ? { ...b, status: data.status } : b));
+        };
+        const handleNewBooking = () => fetchAll(true);
+
+        socket.on('driver_location', handleLocUpdate);
+        socket.on('booking_status_update', handleStatusUpdate);
+        socket.on('new_booking', handleNewBooking);
+        return () => {
+            socket.off('driver_location', handleLocUpdate);
+            socket.off('booking_status_update', handleStatusUpdate);
+            socket.off('new_booking', handleNewBooking);
+        };
+    }, [socket, fetchAll]);
+
+    // Initialize Google Maps
+    useEffect(() => {
+        const initMap = () => {
+            if (!mapContainerRef.current || mapRef.current) return;
+            if (typeof window === 'undefined' || !window.google) return;
+            mapRef.current = new window.google.maps.Map(mapContainerRef.current, {
+                center: { lat: 37.0, lng: 35.3 },
+                zoom: 7,
+                mapTypeId: 'roadmap',
+                styles: [
+                    { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+                    { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+                    { elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] },
+                    { elementType: 'labels.text.fill', stylers: [{ color: '#8d8d8d' }] },
+                    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2d2d44' }] },
+                    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f3460' }] },
+                ],
+                disableDefaultUI: true,
+                zoomControl: true,
+            });
+            setMapReady(true);
+        };
+
+        // Load Google Maps API
+        const tenantRes = apiClient.get('/api/tenant/info').then(res => {
+            const apiKey = res.data?.data?.tenant?.settings?.googleMaps?.apiKey;
+            if (!apiKey) { setMapReady(false); return; }
+            if (document.getElementById('gmaps-script')) { initMap(); return; }
+            const script = document.createElement('script');
+            script.id = 'gmaps-script';
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=initOperationMap`;
+            script.async = true;
+            (window as any).initOperationMap = initMap;
+            document.head.appendChild(script);
+        }).catch(() => setMapReady(false));
+
+        return () => { delete (window as any).initOperationMap; };
+    }, []);
+
+    // Update markers when driver locations change
+    useEffect(() => {
+        if (!mapRef.current || !mapReady) return;
+        const map = mapRef.current;
+        const bounds = new window.google.maps.LatLngBounds();
+        let hasMarkers = false;
+
+        drivers.forEach(driver => {
+            const loc = driverLocations[driver.id];
+            if (!loc) return;
+            hasMarkers = true;
+            const pos = { lat: loc.lat, lng: loc.lng };
+            bounds.extend(pos);
+
+            if (markersRef.current[driver.id]) {
+                markersRef.current[driver.id].setPosition(pos);
+            } else {
+                const isOnline = onlineDriverIds.has(driver.id);
+                const marker = new window.google.maps.Marker({
+                    position: pos,
+                    map,
+                    title: driver.fullName,
+                    icon: {
+                        path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                        scale: 6,
+                        fillColor: isOnline ? '#10b981' : '#6b7280',
+                        fillOpacity: 1,
+                        strokeColor: '#fff',
+                        strokeWeight: 2,
+                    },
+                    label: {
+                        text: driver.firstName.charAt(0),
+                        color: '#fff',
+                        fontWeight: 'bold',
+                        fontSize: '12px'
+                    }
+                });
+                const infoWin = new window.google.maps.InfoWindow({
+                    content: `<div style="font-family:sans-serif;padding:4px">
+                        <b>${driver.fullName}</b><br/>
+                        <span style="color:${isOnline ? '#10b981' : '#6b7280'}">${isOnline ? '🟢 Çevrimiçi' : '⚫ Çevrimdışı'}</span><br/>
+                        ${loc.speed ? `🚗 ${Math.round(loc.speed)} km/h` : ''}
+                    </div>`
+                });
+                marker.addListener('click', () => infoWin.open(map, marker));
+                markersRef.current[driver.id] = marker;
+            }
+        });
+
+        if (hasMarkers && Object.keys(markersRef.current).length > 0) {
+            map.fitBounds(bounds, 60);
+        }
+    }, [driverLocations, drivers, onlineDriverIds, mapReady]);
+
+    const openDetail = (booking: Booking) => {
+        setSelectedBooking(booking);
+        setDetailDrawer(true);
+    };
+
+    const upcomingColumns = [
         {
             title: 'Rezervasyon',
-            dataIndex: 'bookingNumber',
-            key: 'bookingNumber',
-            render: (text: string) => <span style={{ fontWeight: 600 }}>{text}</span>
+            key: 'info',
+            render: (_: any, r: Booking) => {
+                const mins = dayjs(r.pickupDateTime).diff(dayjs(), 'minute');
+                const isUrgent = mins <= 60 && mins >= 0;
+                return (
+                    <Space>
+                        <Avatar style={{ background: isUrgent ? '#ef4444' : '#6366f1', fontSize: 11 }} size={32}>
+                            {r.contactName?.charAt(0)?.toUpperCase() || '?'}
+                        </Avatar>
+                        <div>
+                            <div style={{ fontWeight: 600, fontSize: 12 }}>{r.contactName}</div>
+                            <div style={{ fontSize: 11, color: '#888' }}>
+                                <Tag color="blue" style={{ fontSize: 10, margin: 0 }}>{r.bookingNumber}</Tag>
+                            </div>
+                        </div>
+                        {isUrgent && <AlertOutlined style={{ color: '#ef4444' }} />}
+                    </Space>
+                );
+            },
         },
         {
-            title: 'Tarih',
-            dataIndex: 'pickupDateTime',
-            key: 'date',
-            render: (val: string) => dayjs(val).format('DD.MM HH:mm')
+            title: 'Tarih / Saat',
+            key: 'datetime',
+            width: 100,
+            render: (_: any, r: Booking) => {
+                const dt = dayjs(r.pickupDateTime);
+                const diff = dt.fromNow();
+                return (
+                    <div>
+                        <div style={{ fontSize: 12, fontWeight: 600 }}>{dt.format('HH:mm')}</div>
+                        <div style={{ fontSize: 11, color: '#888' }}>{dt.format('DD.MM')}</div>
+                        <div style={{ fontSize: 10, color: dt.isBefore(dayjs()) ? '#ef4444' : '#10b981' }}>{diff}</div>
+                    </div>
+                );
+            }
         },
         {
             title: 'Güzergah',
             key: 'route',
-            render: (_: any, record: any) => (
-                <div style={{ fontSize: '12px' }}>
-                    <div>{record.pickup.location}</div>
-                    <div style={{ color: '#999' }}>To: {record.dropoff.location}</div>
+            render: (_: any, r: Booking) => (
+                <div style={{ fontSize: 11 }}>
+                    <div style={{ color: '#10b981' }}>↑ {r.pickup?.location?.substring(0, 25) || '-'}</div>
+                    <div style={{ color: '#ef4444' }}>↓ {r.dropoff?.location?.substring(0, 25) || '-'}</div>
                 </div>
-            )
+            ),
         },
         {
             title: 'Durum',
-            dataIndex: 'status',
             key: 'status',
-            render: (status: string, record: any) => {
-                if (record.operationalStatus === 'IN_POOL') return <Tag color="orange">HAVUZDA</Tag>;
-                if (status === 'CONFIRMED') return <Tag color="green">ONAYLI</Tag>;
-                if (status === 'PENDING') return <Tag color="gold">BEKLİYOR</Tag>;
-                return <Tag>{status}</Tag>;
-            }
+            width: 90,
+            render: (_: any, r: Booking) => (
+                <Badge
+                    status={r.status === 'CONFIRMED' ? 'processing' : 'warning'}
+                    text={<span style={{ fontSize: 11 }}>{getStatusLabel(r.status, r.operationalStatus)}</span>}
+                />
+            ),
         },
         {
-            title: 'Tutar',
-            key: 'price',
-            render: (_: any, record: any) => (
-                <span style={{ fontWeight: 600 }}>{record.price} {record.currency || 'TRY'}</span>
+            title: '',
+            key: 'action',
+            width: 40,
+            render: (_: any, r: Booking) => (
+                <Tooltip title="Detay">
+                    <Button size="small" type="text" icon={<EyeOutlined />} onClick={() => openDetail(r)} />
+                </Tooltip>
             )
         }
     ];
 
+    const onlineDriversCount = onlineDriverIds.size;
+    const onlineDriversWithLoc = drivers.filter(d => onlineDriverIds.has(d.id) && driverLocations[d.id]);
+
     return (
         <AdminGuard>
             <AdminLayout selectedKey="op-dashboard">
-                <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                        <Title level={2} style={{ margin: 0 }}>Operasyon Özeti</Title>
-                        <Button icon={<SyncOutlined />} onClick={fetchData} loading={loading}>Yenile</Button>
+                <div style={{ padding: '0 0 24px' }}>
+                    {/* ── Header ── */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                        <div>
+                            <Title level={3} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <DashboardOutlined style={{ color: '#6366f1' }} />
+                                Operasyon Merkezi
+                            </Title>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                                Son güncelleme: {lastUpdated.format('HH:mm:ss')}
+                                <Badge count={onlineDriversCount} style={{ marginLeft: 12, background: '#10b981' }} overflowCount={99} showZero />
+                                <span style={{ marginLeft: 6, fontSize: 11, color: '#10b981' }}>şoför çevrimiçi</span>
+                            </Text>
+                        </div>
+                        <Space>
+                            <Button icon={<SyncOutlined spin={refreshing} />} onClick={() => fetchAll(true)} loading={refreshing}>Yenile</Button>
+                            <Button type="primary" icon={<ArrowRightOutlined />} onClick={() => router.push('/admin/operation/operations')}>
+                                Operasyon Tablosu
+                            </Button>
+                        </Space>
                     </div>
 
-                    {/* Stats Cards */}
-                    <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
-                        <Col xs={24} sm={12} lg={6}>
-                            <Card bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                                <Statistic
-                                    title="Bekleyen Rezervasyon"
-                                    value={stats.pending}
-                                    valueStyle={{ color: '#d48806' }}
-                                    prefix={<ClockCircleOutlined />}
-                                />
-                            </Card>
-                        </Col>
-                        <Col xs={24} sm={12} lg={6}>
-                            <Card bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                                <Statistic
-                                    title="Havuzdaki Transferler"
-                                    value={stats.inPool}
-                                    valueStyle={{ color: '#fa8c16' }}
-                                    prefix={<CarOutlined />}
-                                />
-                            </Card>
-                        </Col>
-                        <Col xs={24} sm={12} lg={6}>
-                            <Card bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                                <Statistic
-                                    title="Aktif Operasyon"
-                                    value={stats.confirmed}
-                                    valueStyle={{ color: '#3f8600' }}
-                                    prefix={<CheckCircleOutlined />}
-                                />
-                            </Card>
-                        </Col>
-                        <Col xs={24} sm={12} lg={6}>
-                            <Card bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                                <Statistic
-                                    title="Tamamlanan Bugün"
-                                    value={stats.completed}
-                                    valueStyle={{ color: '#1890ff' }}
-                                    prefix={<CheckCircleOutlined />}
-                                />
-                            </Card>
-                        </Col>
+                    {/* ── KPI Cards ── */}
+                    <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+                        {[
+                            { label: 'Bugün Toplam', value: stats.todayCount, color: '#6366f1', icon: <CalendarOutlined /> },
+                            { label: 'Beklemede', value: stats.pending, color: '#f59e0b', icon: <ClockCircleOutlined /> },
+                            { label: 'Onaylı', value: stats.confirmed, color: '#3b82f6', icon: <CheckCircleOutlined /> },
+                            { label: 'Aktif Sefer', value: stats.inProgress, color: '#8b5cf6', icon: <ThunderboltOutlined />, pulse: true },
+                            { label: 'Havuzda', value: stats.inPool, color: '#06b6d4', icon: <AimOutlined /> },
+                            { label: 'Tamamlanan', value: stats.completed, color: '#10b981', icon: <StarOutlined /> },
+                        ].map((item, idx) => (
+                            <Col xs={12} sm={8} lg={4} key={idx}>
+                                <Card
+                                    bordered={false}
+                                    style={{
+                                        borderRadius: 12,
+                                        background: `linear-gradient(135deg, ${item.color}15, ${item.color}08)`,
+                                        borderLeft: `3px solid ${item.color}`,
+                                        cursor: 'pointer',
+                                        transition: 'transform 0.2s',
+                                    }}
+                                    bodyStyle={{ padding: '14px 16px' }}
+                                    hoverable
+                                    onClick={() => router.push('/admin/operation/operations')}
+                                >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div>
+                                            <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>{item.label}</div>
+                                            <div style={{ fontSize: 28, fontWeight: 700, color: item.color, lineHeight: 1 }}>
+                                                {loading ? <Spin size="small" /> : item.value}
+                                            </div>
+                                        </div>
+                                        <div style={{
+                                            fontSize: 20, color: item.color, opacity: 0.8,
+                                            animation: item.pulse && item.value > 0 ? 'pulse 2s infinite' : undefined
+                                        }}>
+                                            {item.icon}
+                                        </div>
+                                    </div>
+                                </Card>
+                            </Col>
+                        ))}
                     </Row>
 
-                    <Row gutter={[24, 24]}>
-                        {/* Pending / Active List */}
-                        <Col xs={24} lg={16}>
+                    {/* ── Main Content ── */}
+                    <Row gutter={[16, 16]}>
+                        {/* Left: Map + Active Seferler */}
+                        <Col xs={24} lg={15}>
+                            {/* Live Map */}
                             <Card
-                                title="Yaklaşan Transferler"
-                                extra={<Button type="link" onClick={() => router.push('/admin/transfers')}>Tümünü Gör</Button>}
-                                style={{ height: '100%' }}
+                                title={
+                                    <Space>
+                                        <CompassOutlined style={{ color: '#6366f1' }} />
+                                        <span>Canlı Konum Haritası</span>
+                                        <Badge count={onlineDriversWithLoc.length} style={{ background: '#10b981' }} showZero />
+                                    </Space>
+                                }
+                                extra={
+                                    <Space size={4}>
+                                        <Badge color="#10b981" text={<span style={{ fontSize: 11 }}>Çevrimiçi</span>} />
+                                        <Badge color="#6b7280" text={<span style={{ fontSize: 11 }}>Çevrimdışı</span>} />
+                                    </Space>
+                                }
+                                bordered={false}
+                                style={{ borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}
+                                bodyStyle={{ padding: 0 }}
+                            >
+                                <div
+                                    ref={mapContainerRef}
+                                    style={{ width: '100%', height: 300, background: '#1a1a2e', borderRadius: '0 0 12px 12px', position: 'relative' }}
+                                >
+                                    {!mapReady && !loading && (
+                                        <div style={{
+                                            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+                                            alignItems: 'center', justifyContent: 'center', gap: 12, color: '#888'
+                                        }}>
+                                            <EnvironmentOutlined style={{ fontSize: 48, color: '#6366f1' }} />
+                                            <div style={{ fontSize: 14 }}>Canlı Harita Yükleniyor...</div>
+                                            <div style={{ fontSize: 11, color: '#555', textAlign: 'center', maxWidth: 280 }}>
+                                                Google Maps API Anahtarınızı Ayarlar → Google Maps'ten giriniz.<br />
+                                                Sürücüler giriş yaptığında konumları burada görünecektir.
+                                            </div>
+                                            {/* Driver dots overview */}
+                                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
+                                                {drivers.slice(0, 8).map(d => (
+                                                    <Tooltip key={d.id} title={`${d.fullName} — ${onlineDriverIds.has(d.id) ? 'Çevrimiçi' : 'Çevrimdışı'}`}>
+                                                        <Avatar
+                                                            src={getImageUrl(d.avatar)}
+                                                            size={36}
+                                                            style={{ background: onlineDriverIds.has(d.id) ? '#10b981' : '#6b7280', cursor: 'pointer', border: onlineDriverIds.has(d.id) ? '2px solid #10b981' : '2px solid #444' }}
+                                                        >
+                                                            {d.firstName?.charAt(0)}
+                                                        </Avatar>
+                                                    </Tooltip>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </Card>
+
+                            {/* Upcoming Transfers */}
+                            <Card
+                                title={
+                                    <Space>
+                                        <ClockCircleOutlined style={{ color: '#f59e0b' }} />
+                                        <span>Yaklaşan Transferler</span>
+                                    </Space>
+                                }
+                                extra={
+                                    <Button size="small" type="link" onClick={() => router.push('/admin/operation/operations')}>
+                                        Tümünü Gör <ArrowRightOutlined />
+                                    </Button>
+                                }
+                                bordered={false}
+                                style={{ borderRadius: 12 }}
+                                bodyStyle={{ padding: '0 0 8px' }}
                             >
                                 <Table
-                                    columns={columns}
-                                    dataSource={recentBookings}
+                                    columns={upcomingColumns}
+                                    dataSource={upcomingBookings}
                                     rowKey="id"
                                     pagination={false}
                                     size="small"
+                                    loading={loading}
+                                    locale={{ emptyText: <Empty description="Yaklaşan transfer yok" /> }}
+                                    rowClassName={(r: Booking) => {
+                                        const mins = dayjs(r.pickupDateTime).diff(dayjs(), 'minute');
+                                        return mins <= 60 && mins >= 0 ? 'urgent-row' : '';
+                                    }}
                                 />
                             </Card>
                         </Col>
 
-                        {/* Quick Actions / Alerts */}
-                        <Col xs={24} lg={8}>
-                            <Card title="Hızlı İşlemler" style={{ marginBottom: '24px' }}>
-                                <Space direction="vertical" style={{ width: '100%' }}>
-                                    <Button block onClick={() => router.push('/admin/operation/pool')}>
+                        {/* Right: Drivers, Active, Quick Actions */}
+                        <Col xs={24} lg={9}>
+                            {/* Active Seferler */}
+                            {activeBookings.length > 0 && (
+                                <Card
+                                    title={
                                         <Space>
-                                            <CarOutlined />
-                                            Havuz Yönetimi
-                                            <Tag color="orange" style={{ marginLeft: 'auto' }}>{stats.inPool}</Tag>
+                                            <Badge status="processing" color="#8b5cf6" />
+                                            <span>Aktif Seferler</span>
+                                            <Tag color="purple">{activeBookings.length}</Tag>
                                         </Space>
-                                    </Button>
-                                    <Button block onClick={() => router.push('/admin/vehicles')}>
-                                        <Space>
-                                            <CarOutlined />
-                                            Araç Durumları
-                                        </Space>
-                                    </Button>
-                                    <Button block onClick={() => router.push('/admin/partner-applications')}>
-                                        <Space>
-                                            <TeamOutlined />
-                                            Partner Başvuruları
-                                        </Space>
-                                    </Button>
+                                    }
+                                    bordered={false}
+                                    style={{ borderRadius: 12, marginBottom: 16 }}
+                                    bodyStyle={{ padding: '8px 16px' }}
+                                >
+                                    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                                        {activeBookings.map(b => (
+                                            <div key={b.id}
+                                                style={{
+                                                    background: 'linear-gradient(135deg, #8b5cf615, #6366f108)',
+                                                    borderRadius: 10, padding: '10px 12px',
+                                                    borderLeft: '3px solid #8b5cf6', cursor: 'pointer'
+                                                }}
+                                                onClick={() => openDetail(b)}
+                                            >
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <Space size={6}>
+                                                        <Avatar size={28} style={{ background: '#8b5cf6', fontSize: 11 }}>
+                                                            {b.contactName?.charAt(0)}
+                                                        </Avatar>
+                                                        <div>
+                                                            <div style={{ fontSize: 12, fontWeight: 600 }}>{b.contactName}</div>
+                                                            <div style={{ fontSize: 11, color: '#888' }}>{b.bookingNumber}</div>
+                                                        </div>
+                                                    </Space>
+                                                    <Badge status="processing" color="#8b5cf6" text={<span style={{ fontSize: 10 }}>Yolda</span>} />
+                                                </div>
+                                                <div style={{ marginTop: 6, fontSize: 11, color: '#6b7280' }}>
+                                                    <span style={{ color: '#10b981' }}>↑</span> {b.pickup?.location?.substring(0, 20)} →{' '}
+                                                    <span style={{ color: '#ef4444' }}>↓</span> {b.dropoff?.location?.substring(0, 20)}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </Space>
+                                </Card>
+                            )}
+
+                            {/* Online Drivers */}
+                            <Card
+                                title={
+                                    <Space>
+                                        <WifiOutlined style={{ color: '#10b981' }} />
+                                        <span>Sürücüler</span>
+                                    </Space>
+                                }
+                                extra={<Tag color={onlineDriversCount > 0 ? 'green' : 'default'}>{onlineDriversCount} aktif</Tag>}
+                                bordered={false}
+                                style={{ borderRadius: 12, marginBottom: 16 }}
+                                bodyStyle={{ padding: '8px 16px 16px' }}
+                            >
+                                {loading ? <Spin /> : drivers.length === 0 ? (
+                                    <Empty description="Sürücü bulunamadı" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                                ) : (
+                                    <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                                        {drivers.slice(0, 6).map(d => {
+                                            const isOnline = onlineDriverIds.has(d.id);
+                                            const loc = driverLocations[d.id];
+                                            const lastSeen = d.lastSeenAt ? dayjs(d.lastSeenAt).fromNow() : null;
+                                            return (
+                                                <div key={d.id} style={{
+                                                    display: 'flex', alignItems: 'center', gap: 10,
+                                                    padding: '8px 10px', borderRadius: 8,
+                                                    background: isOnline ? '#10b98108' : 'transparent',
+                                                    border: `1px solid ${isOnline ? '#10b98130' : '#f0f0f0'}`
+                                                }}>
+                                                    <Badge dot status={isOnline ? 'success' : 'default'}>
+                                                        <Avatar src={getImageUrl(d.avatar)} size={34} style={{ background: '#6366f1' }}>
+                                                            {d.firstName?.charAt(0)}
+                                                        </Avatar>
+                                                    </Badge>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <div style={{ fontWeight: 600, fontSize: 12 }}>{d.fullName}</div>
+                                                        <div style={{ fontSize: 11, color: '#888' }}>
+                                                            {d.jobTitle || 'Şoför'}
+                                                            {loc?.speed ? ` • ${Math.round(loc.speed)} km/h` : ''}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right', fontSize: 11 }}>
+                                                        {isOnline ? (
+                                                            <span style={{ color: '#10b981', fontWeight: 600 }}>Çevrimiçi</span>
+                                                        ) : (
+                                                            <span style={{ color: '#9ca3af' }}>{lastSeen || 'Bilinmiyor'}</span>
+                                                        )}
+                                                        {loc && (
+                                                            <div>
+                                                                <EnvironmentOutlined style={{ color: '#6366f1', fontSize: 10 }} />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {drivers.length > 6 && (
+                                            <Button block size="small" type="link" onClick={() => router.push('/admin/personnel')}>
+                                                +{drivers.length - 6} daha göster
+                                            </Button>
+                                        )}
+                                    </Space>
+                                )}
+                            </Card>
+
+                            {/* Quick Actions */}
+                            <Card
+                                title="Hızlı İşlemler"
+                                bordered={false}
+                                style={{ borderRadius: 12, marginBottom: 12 }}
+                                bodyStyle={{ padding: '8px 16px 16px' }}
+                            >
+                                <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                                    {[
+                                        { label: 'Operasyon Tablosu', icon: <DashboardOutlined />, link: '/admin/operation/operations', color: '#6366f1' },
+                                        { label: 'Havuz Yönetimi', icon: <AimOutlined />, link: '/admin/operation/pool', color: '#06b6d4', badge: stats.inPool },
+                                        { label: 'Partner Transferleri', icon: <TeamOutlined />, link: '/admin/operation/partner-transfers', color: '#f59e0b' },
+                                        { label: 'Araç Takibi', icon: <CarOutlined />, link: '/admin/vehicle-tracking', color: '#8b5cf6' },
+                                        { label: 'Rezervasyon Yönetimi', icon: <CalendarOutlined />, link: '/admin/transfers', color: '#10b981' },
+                                    ].map((item, i) => (
+                                        <div key={i}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 10,
+                                                padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                                                background: '#fafafa', border: '1px solid #f0f0f0',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onClick={() => router.push(item.link)}
+                                            onMouseEnter={e => (e.currentTarget.style.borderColor = item.color)}
+                                            onMouseLeave={e => (e.currentTarget.style.borderColor = '#f0f0f0')}
+                                        >
+                                            <span style={{ color: item.color, fontSize: 16 }}>{item.icon}</span>
+                                            <span style={{ flex: 1, fontWeight: 500, fontSize: 13 }}>{item.label}</span>
+                                            {item.badge ? <Tag color="cyan">{item.badge}</Tag> : null}
+                                            <ArrowRightOutlined style={{ color: '#ccc', fontSize: 12 }} />
+                                        </div>
+                                    ))}
                                 </Space>
                             </Card>
 
-                            <Card title="Sistem Durumu">
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                    <span>API Durumu:</span>
-                                    <Tag color="green">Online</Tag>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span>Son Güncelleme:</span>
-                                    <span>{dayjs().format('HH:mm')}</span>
-                                </div>
+                            {/* System Status */}
+                            <Card
+                                title="Sistem Durumu"
+                                bordered={false}
+                                style={{ borderRadius: 12 }}
+                                bodyStyle={{ padding: '12px 16px' }}
+                            >
+                                <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                                    {[
+                                        { label: 'API Sunucusu', status: 'online' },
+                                        { label: 'Socket Bağlantısı', status: socket?.connected ? 'online' : 'offline' },
+                                        { label: 'Canlı Takip', status: onlineDriversCount > 0 ? 'online' : 'idle' },
+                                    ].map((s, i) => (
+                                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <Text style={{ fontSize: 13 }}>{s.label}</Text>
+                                            <Tag color={s.status === 'online' ? 'green' : s.status === 'idle' ? 'gold' : 'red'}>
+                                                {s.status === 'online' ? 'Online' : s.status === 'idle' ? 'Bekleniyor' : 'Offline'}
+                                            </Tag>
+                                        </div>
+                                    ))}
+                                    <Divider style={{ margin: '8px 0' }} />
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Text type="secondary" style={{ fontSize: 11 }}>Son yenileme</Text>
+                                        <Text style={{ fontSize: 11 }}>{lastUpdated.format('HH:mm:ss')}</Text>
+                                    </div>
+                                    <Progress
+                                        percent={100}
+                                        showInfo={false}
+                                        strokeColor={{ from: '#6366f1', to: '#8b5cf6' }}
+                                        size="small"
+                                        style={{ marginTop: -4 }}
+                                    />
+                                </Space>
                             </Card>
                         </Col>
                     </Row>
                 </div>
+
+                {/* Booking Detail Drawer */}
+                <Drawer
+                    title={
+                        <Space>
+                            <Avatar style={{ background: '#6366f1' }}>{selectedBooking?.contactName?.charAt(0)}</Avatar>
+                            <div>
+                                <div style={{ fontWeight: 600 }}>{selectedBooking?.contactName}</div>
+                                <Tag color="blue" style={{ fontSize: 11 }}>{selectedBooking?.bookingNumber}</Tag>
+                            </div>
+                        </Space>
+                    }
+                    placement="right"
+                    width={400}
+                    open={detailDrawer}
+                    onClose={() => setDetailDrawer(false)}
+                    extra={
+                        <Button type="primary" size="small" onClick={() => {
+                            setDetailDrawer(false);
+                            router.push('/admin/operation/operations');
+                        }}>
+                            Tabloda Aç
+                        </Button>
+                    }
+                >
+                    {selectedBooking && (
+                        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                            {/* Status */}
+                            <Card style={{ borderRadius: 10, background: `${getStatusColor(selectedBooking.status)}10`, border: `1px solid ${getStatusColor(selectedBooking.status)}30` }} bodyStyle={{ padding: 12 }}>
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ fontSize: 20, fontWeight: 700, color: getStatusColor(selectedBooking.status) }}>
+                                        {getStatusLabel(selectedBooking.status, selectedBooking.operationalStatus)}
+                                    </div>
+                                </div>
+                            </Card>
+
+                            {/* Route */}
+                            <Card bordered={false} style={{ borderRadius: 10, background: '#fafafa' }} bodyStyle={{ padding: 12 }}>
+                                <Timeline
+                                    items={[
+                                        {
+                                            color: '#10b981',
+                                            dot: <EnvironmentOutlined style={{ color: '#10b981' }} />,
+                                            children: (
+                                                <div>
+                                                    <div style={{ fontWeight: 600, fontSize: 13, color: '#10b981' }}>Alış</div>
+                                                    <div style={{ fontSize: 12 }}>{selectedBooking.pickup?.location || '-'}</div>
+                                                    <div style={{ fontSize: 11, color: '#888' }}>
+                                                        {dayjs(selectedBooking.pickupDateTime).format('DD.MM.YYYY HH:mm')}
+                                                    </div>
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            color: '#ef4444',
+                                            dot: <AimOutlined style={{ color: '#ef4444' }} />,
+                                            children: (
+                                                <div>
+                                                    <div style={{ fontWeight: 600, fontSize: 13, color: '#ef4444' }}>Bırakış</div>
+                                                    <div style={{ fontSize: 12 }}>{selectedBooking.dropoff?.location || '-'}</div>
+                                                </div>
+                                            )
+                                        }
+                                    ]}
+                                />
+                            </Card>
+
+                            {/* Details */}
+                            {[
+                                { label: 'Müşteri', value: selectedBooking.contactName },
+                                { label: 'Telefon', value: selectedBooking.contactPhone, icon: <PhoneOutlined /> },
+                                { label: 'Yolcu Sayısı', value: selectedBooking.adults ? `${selectedBooking.adults} kişi` : '-' },
+                                { label: 'Araç Tipi', value: selectedBooking.vehicleType || '-', icon: <CarOutlined /> },
+                                { label: 'Uçuş Kodu', value: selectedBooking.flightNumber || '-' },
+                                { label: 'Tutar', value: `${selectedBooking.total} ${selectedBooking.currency}` },
+                                { label: 'Acente', value: selectedBooking.agencyName || 'Direkt Satış' },
+                            ].map((item, i) => (
+                                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f5f5f5' }}>
+                                    <Text type="secondary" style={{ fontSize: 12 }}>{item.label}</Text>
+                                    <Text style={{ fontSize: 12, fontWeight: 500 }}>{item.value}</Text>
+                                </div>
+                            ))}
+                        </Space>
+                    )}
+                </Drawer>
+
+                <style>{`
+                    @keyframes pulse {
+                        0% { opacity: 1; }
+                        50% { opacity: 0.5; }
+                        100% { opacity: 1; }
+                    }
+                    .urgent-row td { background: #fef2f2 !important; }
+                    .urgent-row:hover td { background: #fee2e2 !important; }
+                `}</style>
             </AdminLayout>
         </AdminGuard>
     );

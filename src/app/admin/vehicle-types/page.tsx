@@ -47,7 +47,7 @@ import {
     CarOutlined,
     LoadingOutlined
 } from '@ant-design/icons';
-import apiClient from '../../../lib/api-client';
+import apiClient, { getImageUrl } from '../../../lib/api-client';
 import AdminGuard from '../AdminGuard';
 import AdminLayout from '../AdminLayout';
 
@@ -256,7 +256,7 @@ const VehicleTypesPage: React.FC = () => {
             render: (text: string, record: VehicleType) => (
                 <Space>
                     {record.image ? (
-                        <img src={record.image} alt={text} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />
+                        <img src={getImageUrl(record.image)} alt={text} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />
                     ) : (
                         <CarOutlined style={{ fontSize: 24, color: '#1890ff' }} />
                     )}
@@ -426,7 +426,7 @@ const VehicleTypesPage: React.FC = () => {
                                 }}
                                 onChange={handleUploadChange}
                             >
-                                {imageUrl ? <img src={imageUrl} alt="img" style={{ width: '100%', objectFit: 'contain' }} /> : uploadButton}
+                                {imageUrl ? <img src={getImageUrl(imageUrl)} alt="img" style={{ width: '100%', objectFit: 'contain' }} /> : uploadButton}
                             </Upload>
                         </Form.Item>
                         <Form.Item name="image" hidden>

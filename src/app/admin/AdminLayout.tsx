@@ -61,7 +61,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, selectedKey = 'dash
         <Menu
           theme="dark"
           mode="inline"
-          defaultOpenKeys={['vehicles', 'vehicle-tracking-group']}
+          defaultOpenKeys={['vehicles']}
           selectedKeys={[selectedKey]}
           items={[
             {
@@ -279,6 +279,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, selectedKey = 'dash
                   key: 'users',
                   label: 'Kullanıcılar',
                   onClick: () => router.push('/admin/users')
+                },
+                {
+                  key: 'definitions',
+                  label: 'Tanımlamalar',
+                  onClick: () => router.push('/admin/settings/definitions')
                 }
               ]
             }

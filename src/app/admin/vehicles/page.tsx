@@ -33,7 +33,7 @@ import {
   CarOutlined,
 } from '@ant-design/icons';
 import { Avatar, List, Tooltip } from 'antd';
-import apiClient from '../../../lib/api-client';
+import apiClient, { getImageUrl } from '../../../lib/api-client';
 import dayjs from 'dayjs';
 import AdminGuard from '../AdminGuard';
 import AdminLayout from '../AdminLayout';
@@ -503,7 +503,7 @@ const VehiclesPage: React.FC = () => {
                   <div style={{
                     height: 140,
                     background: v.imageUrl
-                      ? `url(${v.imageUrl}) center/cover`
+                      ? `url(${getImageUrl(v.imageUrl)}) center/cover`
                       : `linear-gradient(135deg, ${usageInfo.color}22 0%, ${classColor}33 100%)`,
                     display: 'flex',
                     alignItems: 'center',
@@ -646,7 +646,7 @@ const VehiclesPage: React.FC = () => {
                       );
                       return assignedDriver ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, padding: '4px 8px', background: '#f0fdf4', borderRadius: 6 }}>
-                          <Avatar size={20} src={assignedDriver.photo} icon={<UserOutlined />} style={{ background: '#16a34a' }} />
+                          <Avatar size={20} src={getImageUrl(assignedDriver.photo)} icon={<UserOutlined />} style={{ background: '#16a34a' }} />
                           <Text style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>
                             🚗 {assignedDriver.firstName} {assignedDriver.lastName}
                           </Text>
@@ -777,7 +777,7 @@ const VehiclesPage: React.FC = () => {
                   <List.Item.Meta
                     avatar={
                       <Avatar
-                        src={d.photo}
+                        src={getImageUrl(d.photo)}
                         icon={<UserOutlined />}
                         style={{ background: isCurrentDriver ? '#16a34a' : '#9333ea' }}
                       />
