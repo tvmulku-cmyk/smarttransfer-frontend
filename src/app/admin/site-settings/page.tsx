@@ -5,7 +5,6 @@ import {
     Card,
     Typography,
     Switch,
-    List,
     Button,
     Input,
     Space,
@@ -199,36 +198,30 @@ const SiteSettingsPage: React.FC = () => {
                 </span>
             ),
             children: (
-                <Card title="Aktif Hizmetler" bordered={false}>
-                    <List
-                        itemLayout="horizontal"
-                        dataSource={[
+                <Card title="Aktif Hizmetler" variant="borderless">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {[
                             { key: 'transfer', title: 'Transfer Hizmeti', desc: 'Havalimanı ve şehir içi transferler' },
                             { key: 'tour', title: 'Tur Hizmeti', desc: 'Rehberli turlar ve geziler' },
                             { key: 'hotel', title: 'Otel Rezervasyonu', desc: 'Konaklama seçenekleri' },
                             { key: 'flight', title: 'Uçak Bileti', desc: 'Uçuş arama ve rezervasyon' },
                             { key: 'car', title: 'Araç Kiralama', desc: 'Rent a car hizmetleri' },
                             { key: 'cruise', title: 'Cruise Turları', desc: 'Gemi turları' },
-                        ]}
-                        renderItem={(item) => (
-                            <List.Item
-                                actions={[
-                                    <Switch
-                                        key="toggle"
-                                        checked={modules[item.key]}
-                                        onChange={(checked) => handleModuleToggle(item.key, checked)}
-                                        checkedChildren={<CheckCircleOutlined />}
-                                        unCheckedChildren={<CloseCircleOutlined />}
-                                    />
-                                ]}
-                            >
-                                <List.Item.Meta
-                                    title={item.title}
-                                    description={item.desc}
+                        ].map((item, index, arr) => (
+                            <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: index !== arr.length - 1 ? 16 : 0, borderBottom: index !== arr.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
+                                <div>
+                                    <div style={{ fontWeight: 600, fontSize: 14 }}>{item.title}</div>
+                                    <div style={{ color: '#888', fontSize: 13 }}>{item.desc}</div>
+                                </div>
+                                <Switch
+                                    checked={modules[item.key]}
+                                    onChange={(checked) => handleModuleToggle(item.key, checked)}
+                                    checkedChildren={<CheckCircleOutlined />}
+                                    unCheckedChildren={<CloseCircleOutlined />}
                                 />
-                            </List.Item>
-                        )}
-                    />
+                            </div>
+                        ))}
+                    </div>
                 </Card>
             ),
         },
@@ -242,7 +235,7 @@ const SiteSettingsPage: React.FC = () => {
             ),
             children: (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
-                    <Card title="Arka Plan Tipi" bordered={false}>
+                    <Card title="Arka Plan Tipi" variant="borderless">
                         <Radio.Group
                             value={heroBackground.type}
                             onChange={(e) => setHeroBackground({ ...heroBackground, type: e.target.value })}
@@ -262,7 +255,7 @@ const SiteSettingsPage: React.FC = () => {
                     </Card>
 
                     {heroBackground.type === 'video' ? (
-                        <Card title="YouTube Video Ayarları" bordered={false}>
+                        <Card title="YouTube Video Ayarları" variant="borderless">
                             <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
                                 Arka planda oynatılacak YouTube videosunun linkini veya ID'sini giriniz.
                                 Video otomatik olarak sessiz bir şekilde oynatılacaktır.
@@ -290,7 +283,7 @@ const SiteSettingsPage: React.FC = () => {
                         </Card>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
-                            <Card title="Yeni Görsel Ekle" bordered={false}>
+                            <Card title="Yeni Görsel Ekle" variant="borderless">
                                 <Space.Compact style={{ width: '100%' }}>
                                     <Input
                                         placeholder="Görsel URL (https://...)"
@@ -302,12 +295,10 @@ const SiteSettingsPage: React.FC = () => {
                                 </Space.Compact>
                             </Card>
 
-                            <Card title="Mevcut Görseller" bordered={false}>
-                                <List
-                                    grid={{ gutter: 16, column: 3, xs: 1, sm: 2, md: 3 }}
-                                    dataSource={heroImages}
-                                    renderItem={(url, index) => (
-                                        <List.Item>
+                            <Card title="Mevcut Görseller" variant="borderless">
+                                <Row gutter={[16, 16]}>
+                                    {heroImages.map((url, index) => (
+                                        <Col xs={24} sm={12} md={8} key={index}>
                                             <Card
                                                 cover={
                                                     <div style={{ height: 200, overflow: 'hidden' }}>
@@ -331,9 +322,9 @@ const SiteSettingsPage: React.FC = () => {
                                             >
                                                 <Card.Meta title={`Görsel ${index + 1}`} description={<Text ellipsis>{url}</Text>} />
                                             </Card>
-                                        </List.Item>
-                                    )}
-                                />
+                                        </Col>
+                                    ))}
+                                </Row>
                             </Card>
                         </div>
                     )}
@@ -349,7 +340,7 @@ const SiteSettingsPage: React.FC = () => {
                 </span>
             ),
             children: (
-                <Card title="Google Maps Ayarları" bordered={false}>
+                <Card title="Google Maps Ayarları" variant="borderless">
                     <Form layout="vertical">
                         <Form.Item
                             label="Google Maps API Anahtarı"

@@ -455,7 +455,7 @@ const AccountsPage: React.FC = () => {
             key: 'contact',
             width: 180,
             render: (_: any, record: Account) => (
-                <Space direction="vertical" size={2}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {record.phone && (
                         <Text style={{ fontSize: 12 }}>
                             <PhoneOutlined style={{ color: '#6b7280', marginRight: 4 }} />{record.phone}
@@ -467,7 +467,7 @@ const AccountsPage: React.FC = () => {
                         </Text>
                     )}
                     {!record.phone && !record.email && <Text type="secondary" style={{ fontSize: 12 }}>—</Text>}
-                </Space>
+                </div>
             )
         },
         {
@@ -604,15 +604,15 @@ const AccountsPage: React.FC = () => {
                     <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
                         <Col xs={24} sm={8}>
                             <Card
-                                bordered={false}
+                                variant="borderless"
                                 style={{ borderRadius: 14, background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', border: '1px solid #bbf7d0' }}
-                                bodyStyle={{ padding: '16px 20px' }}
+                                styles={{ body: { padding: '16px 20px' } }}
                             >
                                 <Statistic
                                     title={<Text style={{ color: '#16a34a', fontWeight: 600 }}>Toplam Alacak</Text>}
                                     value={stats.receivable}
                                     precision={2}
-                                    valueStyle={{ color: '#16a34a', fontWeight: 700, fontSize: 22 }}
+                                    styles={{ content: { color: '#16a34a', fontWeight: 700, fontSize: 22 } }}
                                     prefix={<ArrowUpOutlined />}
                                     suffix="₺"
                                 />
@@ -620,15 +620,15 @@ const AccountsPage: React.FC = () => {
                         </Col>
                         <Col xs={24} sm={8}>
                             <Card
-                                bordered={false}
+                                variant="borderless"
                                 style={{ borderRadius: 14, background: 'linear-gradient(135deg, #fef2f2 0%, #fecaca 100%)', border: '1px solid #fca5a5' }}
-                                bodyStyle={{ padding: '16px 20px' }}
+                                styles={{ body: { padding: '16px 20px' } }}
                             >
                                 <Statistic
                                     title={<Text style={{ color: '#dc2626', fontWeight: 600 }}>Toplam Borç</Text>}
                                     value={stats.payable}
                                     precision={2}
-                                    valueStyle={{ color: '#dc2626', fontWeight: 700, fontSize: 22 }}
+                                    styles={{ content: { color: '#dc2626', fontWeight: 700, fontSize: 22 } }}
                                     prefix={<ArrowDownOutlined />}
                                     suffix="₺"
                                 />
@@ -636,7 +636,7 @@ const AccountsPage: React.FC = () => {
                         </Col>
                         <Col xs={24} sm={8}>
                             <Card
-                                bordered={false}
+                                variant="borderless"
                                 style={{
                                     borderRadius: 14,
                                     background: stats.netBalance >= 0
@@ -644,13 +644,13 @@ const AccountsPage: React.FC = () => {
                                         : 'linear-gradient(135deg, #fdf4ff 0%, #f3e8ff 100%)',
                                     border: stats.netBalance >= 0 ? '1px solid #93c5fd' : '1px solid #d8b4fe'
                                 }}
-                                bodyStyle={{ padding: '16px 20px' }}
+                                styles={{ body: { padding: '16px 20px' } }}
                             >
                                 <Statistic
                                     title={<Text style={{ color: stats.netBalance >= 0 ? '#2563eb' : '#7c3aed', fontWeight: 600 }}>Net Bakiye</Text>}
                                     value={Math.abs(stats.netBalance)}
                                     precision={2}
-                                    valueStyle={{ color: stats.netBalance >= 0 ? '#2563eb' : '#7c3aed', fontWeight: 700, fontSize: 22 }}
+                                    styles={{ content: { color: stats.netBalance >= 0 ? '#2563eb' : '#7c3aed', fontWeight: 700, fontSize: 22 } }}
                                     prefix={<WalletOutlined />}
                                     suffix={stats.netBalance >= 0 ? ' ₺ (Alacaklı)' : ' ₺ (Borçlu)'}
                                 />
@@ -660,8 +660,8 @@ const AccountsPage: React.FC = () => {
 
                     {/* Type Summary Pills */}
                     <Card
-                        bordered={false}
-                        bodyStyle={{ padding: '12px 20px' }}
+                        variant="borderless"
+                        styles={{ body: { padding: '12px 20px' } }}
                         style={{ borderRadius: 12, marginBottom: 20, border: '1px solid #f0f0f0' }}
                     >
                         <Row gutter={[12, 8]} align="middle">
@@ -710,9 +710,9 @@ const AccountsPage: React.FC = () => {
 
                     {/* Main Table Card */}
                     <Card
-                        bordered={false}
+                        variant="borderless"
                         style={{ borderRadius: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0' }}
-                        bodyStyle={{ padding: 0 }}
+                        styles={{ body: { padding: 0 } }}
                     >
                         {/* Search Bar */}
                         <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 12 }}>
