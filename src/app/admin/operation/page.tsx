@@ -228,7 +228,8 @@ export default function OperationDashboard() {
         const tenantRes = apiClient.get('/api/tenant/info').then(res => {
             const apiKey = res.data?.data?.tenant?.settings?.googleMaps?.apiKey;
             if (!apiKey) { setMapReady(false); return; }
-            if (document.getElementById('gmaps-script')) { initMap(); return; }
+            if (window.google && window.google.maps) { initMap(); return; }
+            if (document.getElementById('gmaps-script')) return; // wait for script
             const script = document.createElement('script');
             script.id = 'gmaps-script';
             script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=initOperationMap`;
@@ -411,7 +412,7 @@ export default function OperationDashboard() {
                         ].map((item, idx) => (
                             <Col xs={12} sm={8} lg={4} key={idx}>
                                 <Card
-                                    bordered={false}
+                                    variant="borderless"
                                     style={{
                                         borderRadius: 12,
                                         background: `linear-gradient(135deg, ${item.color}15, ${item.color}08)`,
@@ -419,7 +420,7 @@ export default function OperationDashboard() {
                                         cursor: 'pointer',
                                         transition: 'transform 0.2s',
                                     }}
-                                    bodyStyle={{ padding: '14px 16px' }}
+                                    styles={{ body: { padding: '14px 16px' } }}
                                     hoverable
                                     onClick={() => router.push('/admin/operation/operations')}
                                 >
@@ -461,9 +462,9 @@ export default function OperationDashboard() {
                                         <Badge color="#6b7280" text={<span style={{ fontSize: 11 }}>Çevrimdışı</span>} />
                                     </Space>
                                 }
-                                bordered={false}
+                                variant="borderless"
                                 style={{ borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}
-                                bodyStyle={{ padding: 0 }}
+                                styles={{ body: { padding: 0 } }}
                             >
                                 <div
                                     ref={mapContainerRef}
@@ -512,9 +513,9 @@ export default function OperationDashboard() {
                                         Tümünü Gör <ArrowRightOutlined />
                                     </Button>
                                 }
-                                bordered={false}
+                                variant="borderless"
                                 style={{ borderRadius: 12 }}
-                                bodyStyle={{ padding: '0 0 8px' }}
+                                styles={{ body: { padding: '0 0 8px' } }}
                             >
                                 <Table
                                     columns={upcomingColumns}
@@ -544,11 +545,11 @@ export default function OperationDashboard() {
                                             <Tag color="purple">{activeBookings.length}</Tag>
                                         </Space>
                                     }
-                                    bordered={false}
+                                    variant="borderless"
                                     style={{ borderRadius: 12, marginBottom: 16 }}
-                                    bodyStyle={{ padding: '8px 16px' }}
+                                    styles={{ body: { padding: '8px 16px' } }}
                                 >
-                                    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
                                         {activeBookings.map(b => (
                                             <div key={b.id}
                                                 style={{
@@ -576,7 +577,7 @@ export default function OperationDashboard() {
                                                 </div>
                                             </div>
                                         ))}
-                                    </Space>
+                                    </div>
                                 </Card>
                             )}
 
@@ -589,14 +590,14 @@ export default function OperationDashboard() {
                                     </Space>
                                 }
                                 extra={<Tag color={onlineDriversCount > 0 ? 'green' : 'default'}>{onlineDriversCount} aktif</Tag>}
-                                bordered={false}
+                                variant="borderless"
                                 style={{ borderRadius: 12, marginBottom: 16 }}
-                                bodyStyle={{ padding: '8px 16px 16px' }}
+                                styles={{ body: { padding: '8px 16px 16px' } }}
                             >
                                 {loading ? <Spin /> : drivers.length === 0 ? (
                                     <Empty description="Sürücü bulunamadı" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                                 ) : (
-                                    <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
                                         {drivers.slice(0, 6).map(d => {
                                             const isOnline = onlineDriverIds.has(d.id);
                                             const loc = driverLocations[d.id];
@@ -640,18 +641,18 @@ export default function OperationDashboard() {
                                                 +{drivers.length - 6} daha göster
                                             </Button>
                                         )}
-                                    </Space>
+                                    </div>
                                 )}
                             </Card>
 
                             {/* Quick Actions */}
                             <Card
                                 title="Hızlı İşlemler"
-                                bordered={false}
+                                variant="borderless"
                                 style={{ borderRadius: 12, marginBottom: 12 }}
-                                bodyStyle={{ padding: '8px 16px 16px' }}
+                                styles={{ body: { padding: '8px 16px 16px' } }}
                             >
-                                <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
                                     {[
                                         { label: 'Operasyon Tablosu', icon: <DashboardOutlined />, link: '/admin/operation/operations', color: '#6366f1' },
                                         { label: 'Havuz Yönetimi', icon: <AimOutlined />, link: '/admin/operation/pool', color: '#06b6d4', badge: stats.inPool },
@@ -676,17 +677,17 @@ export default function OperationDashboard() {
                                             <ArrowRightOutlined style={{ color: '#ccc', fontSize: 12 }} />
                                         </div>
                                     ))}
-                                </Space>
+                                </div>
                             </Card>
 
                             {/* System Status */}
                             <Card
                                 title="Sistem Durumu"
-                                bordered={false}
+                                variant="borderless"
                                 style={{ borderRadius: 12 }}
-                                bodyStyle={{ padding: '12px 16px' }}
+                                styles={{ body: { padding: '12px 16px' } }}
                             >
-                                <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
                                     {[
                                         { label: 'API Sunucusu', status: 'online' },
                                         { label: 'Socket Bağlantısı', status: socket?.connected ? 'online' : 'offline' },
@@ -711,7 +712,7 @@ export default function OperationDashboard() {
                                         size="small"
                                         style={{ marginTop: -4 }}
                                     />
-                                </Space>
+                                </div>
                             </Card>
                         </Col>
                     </Row>
@@ -729,7 +730,6 @@ export default function OperationDashboard() {
                         </Space>
                     }
                     placement="right"
-                    width={400}
                     open={detailDrawer}
                     onClose={() => setDetailDrawer(false)}
                     extra={
@@ -742,9 +742,9 @@ export default function OperationDashboard() {
                     }
                 >
                     {selectedBooking && (
-                        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
                             {/* Status */}
-                            <Card style={{ borderRadius: 10, background: `${getStatusColor(selectedBooking.status)}10`, border: `1px solid ${getStatusColor(selectedBooking.status)}30` }} bodyStyle={{ padding: 12 }}>
+                            <Card style={{ borderRadius: 10, background: `${getStatusColor(selectedBooking.status)}10`, border: `1px solid ${getStatusColor(selectedBooking.status)}30` }} styles={{ body: { padding: 12 } }}>
                                 <div style={{ textAlign: 'center' }}>
                                     <div style={{ fontSize: 20, fontWeight: 700, color: getStatusColor(selectedBooking.status) }}>
                                         {getStatusLabel(selectedBooking.status, selectedBooking.operationalStatus)}
@@ -753,7 +753,7 @@ export default function OperationDashboard() {
                             </Card>
 
                             {/* Route */}
-                            <Card bordered={false} style={{ borderRadius: 10, background: '#fafafa' }} bodyStyle={{ padding: 12 }}>
+                            <Card variant="borderless" style={{ borderRadius: 10, background: '#fafafa' }} styles={{ body: { padding: 12 } }}>
                                 <Timeline
                                     items={[
                                         {
@@ -798,7 +798,7 @@ export default function OperationDashboard() {
                                     <Text style={{ fontSize: 12, fontWeight: 500 }}>{item.value}</Text>
                                 </div>
                             ))}
-                        </Space>
+                        </div>
                     )}
                 </Drawer>
 
