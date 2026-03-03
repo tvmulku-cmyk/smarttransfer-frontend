@@ -85,7 +85,7 @@ const SiteSettingsPage: React.FC = () => {
 
     const handleSaveGoogleMaps = async () => {
         try {
-            const res = await axios.put(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/tenant/settings`, {
+            const res = await apiClient.put('/api/tenant/settings', {
                 googleMaps: googleMapsSettings
             });
 
@@ -154,7 +154,7 @@ const SiteSettingsPage: React.FC = () => {
             setHeroImages(updatedImages); // Optimistic update
             setNewImageUrl('');
 
-            const res = await axios.put(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/tenant/hero-images`, {
+            const res = await apiClient.put('/api/tenant/hero-images', {
                 images: updatedImages
             });
 
@@ -175,7 +175,7 @@ const SiteSettingsPage: React.FC = () => {
             const updatedImages = heroImages.filter((_, i) => i !== index);
             setHeroImages(updatedImages);
 
-            const res = await axios.put(`${(process.env.NEXT_PUBLIC_API_URL || 'https://smarttransfer-backend-production.up.railway.app').replace(/[\r\n]+/g, '').trim()}/api/tenant/hero-images`, {
+            const res = await apiClient.put('/api/tenant/hero-images', {
                 images: updatedImages
             });
 
